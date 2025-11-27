@@ -1,0 +1,11 @@
+[package]
+name = "mandelbrot_rust"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+colorous = "1.0.16"
+itertools = "0.14.0"
+minifb = "0.28.0"
+num = "0.4.3"
+rayon = "1.11.0"
