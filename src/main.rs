@@ -1,14 +1,23 @@
+mod bigfloat;
+mod text_render;
+
 use mandelbrot_rust::{Config, Image};
-use minifb::{Key, MouseButton, MouseMode, ScaleMode, Window, WindowOptions};
+use minifb::{Key, KeyRepeat, MouseButton, MouseMode, ScaleMode, Window, WindowOptions};
+
+use crate::text_render::TextRender;
 
 fn main() {
-    let config = Config {
-        max_iter: 100,
-        bound: 2.0,
-        window_size: (800, 600),
-        x_lims: (-2.0, 1.0),
-        y_lims: (-1.5, 1.5),
-    };
+    let x_center = -0.743030;
+    let y_center = 0.126433;
+    let config = Config::new(
+        300,
+        2.0,
+        (1920, 1080),
+        (x_center - 1.0, x_center + 1.0),
+        (y_center - 1.0, y_center + 1.0),
+    );
+
+    let text_render = TextRender::new();
 
     let (width, height) = config.window_size;
 
@@ -41,6 +50,17 @@ fn main() {
             drag_start = current_mouse_pos;
         }
 
+        if window.is_key_pressed(Key::I, KeyRepeat::No) {
+            image.update_max_iter(30.0);
+            needs_redraw = true;
+        } else if window.is_key_pressed(Key::O, KeyRepeat::No) {
+            image.update_max_iter(-30.0);
+            needs_redraw = true;
+        } else if window.is_key_pressed(Key::Z, KeyRepeat::No) {
+            image.zoom_window(10.0);
+            needs_redraw = true;
+        }
+
         if !mouse_down && was_mouse_down {
             if let (Some((curr_x, curr_y)), Some((last_x, last_y))) =
                 (current_mouse_pos, drag_start)
@@ -54,10 +74,33 @@ fn main() {
             drag_start = None;
         }
 
+        if let Some((_, scroll_y)) = window.get_scroll_wheel()
+            && scroll_y.abs() > 0.0
+        {
+            image.zoom_window(scroll_y);
+            needs_redraw = true;
+        }
+
         was_mouse_down = mouse_down;
 
         if needs_redraw {
             buffer = image.render();
+            let (zoom, x_center, y_center, max_iter) = image.get_image_info();
+            let text_info = format!(
+                "Zoom: {:.2e} Center: ({:.6}, {:.6})i MaxIter: {}",
+                zoom, x_center, y_center, max_iter
+            );
+
+            text_render.draw_text(
+                &mut buffer,
+                width,
+                height,
+                &text_info,
+                10,
+                10,
+                20.0,
+                0xFFFFFF,
+            );
             needs_redraw = false;
         }
 
