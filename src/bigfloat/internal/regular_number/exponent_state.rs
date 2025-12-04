@@ -12,4 +12,16 @@ impl ExponentState {
             _ => panic!("Special value doesn't have exponent"),
         }
     }
+
+    pub(super) fn sum_exponents(exponents: Vec<i64>) -> Self {
+        let sum: i128 = exponents.iter().map(|&x| x as i128).sum();
+
+        if sum > i64::MAX as i128 {
+            Self::Overflow
+        } else if sum < i64::MIN as i128 {
+            Self::Underflow
+        } else {
+            Self::Normal(sum as i64)
+        }
+    }
 }
