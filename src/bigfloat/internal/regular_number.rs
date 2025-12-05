@@ -25,26 +25,6 @@ impl<const PRECISION: usize> Number<PRECISION> {
         self.sign
     }
 
-    // This only works on numbers that have the same exponent!
-    pub fn is_within_ulsp(&self, other: &Self, max_ulps: u64) -> bool {
-        if self.get_sign() != other.get_sign() {
-            return false;
-        }
-        if self.get_exponent() != other.get_exponent() {
-            return false;
-        }
-
-        let limbs_a = &self.limbs;
-        let limbs_b = &self.limbs;
-
-        if limbs_a[1..] != limbs_b[1..] {
-            return false;
-        }
-
-        let diff = limbs_a[0].abs_diff(limbs_b[0]);
-        diff <= max_ulps
-    }
-
     pub(super) fn get_exponent(&self) -> i64 {
         self.exponent.get_exponent()
     }
@@ -439,6 +419,49 @@ impl<const PRECISION: usize> From<u32> for Number<PRECISION> {
 impl<const PRECISION: usize> From<i32> for Number<PRECISION> {
     fn from(value: i32) -> Self {
         Self::from(value as i64)
+    }
+}
+
+impl<const PRECISION: usize> From<f64> for Number<PRECISION> {
+    fn from(value: f64) -> Self {
+        let bits = value.to_bits();
+        let sign = (bits >> 63) != 0;
+        let exponent_bits = ((bits >> 52) & 0x7FF) as i64;
+        let mantissa_bits = bits & 0xFFFFFFFFFFFFF;
+
+        let limbs_needed = PRECISION.div_ceil(64);
+        let mut limbs = vec![0u64; limbs_needed];
+
+        let is_subnormal = exponent_bits == 0;
+
+        if is_subnormal {
+            let normalized_mantissa = mantissa_bits << 11;
+            limbs[limbs_needed - 1] = normalized_mantissa;
+
+            let leading_zeros = normalized_mantissa.leading_zeros();
+            let shift = BitShift::new(-(leading_zeros as i64));
+
+            shift_bits_internal(&mut limbs, shift.amount % 64, &shift.direction);
+
+            let exponent = -1022 - 52 - (leading_zeros as i64) - ((limbs_needed - 1) as i64 * 64);
+
+            Self::from_components(limbs, ExponentState::Normal(exponent), sign)
+        } else {
+            let full_mantissa = (1u64 << 52) | mantissa_bits;
+            let normalized_mantissa = full_mantissa << 11;
+            limbs[limbs_needed - 1] = normalized_mantissa;
+
+            let actual_exponent = exponent_bits - 1023;
+            let exponent = actual_exponent - 52 + 11 - ((limbs_needed - 1) as i64 * 64);
+
+            Self::from_components(limbs, ExponentState::Normal(exponent), sign)
+        }
+    }
+}
+
+impl<const PRECISION: usize> From<f32> for Number<PRECISION> {
+    fn from(value: f32) -> Self {
+        Self::from(value as f64)
     }
 }
 

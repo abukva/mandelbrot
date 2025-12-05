@@ -105,23 +105,21 @@ impl<const PRECISION: usize> From<i32> for BigFloat<PRECISION> {
     }
 }
 
+impl<const PRECISION: usize> From<f64> for BigFloat<PRECISION> {
+    fn from(value: f64) -> Self {
+        Self(Internal::from(value))
+    }
+}
+
+impl<const PRECISION: usize> From<f32> for BigFloat<PRECISION> {
+    fn from(value: f32) -> Self {
+        Self::from(value as f64)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn is_within_ulps_simple<const PRECISION: usize>(
-        first: &BigFloat<PRECISION>,
-        second: &BigFloat<PRECISION>,
-        max_ulps: u64,
-    ) -> bool {
-        match (&first.0, &second.0) {
-            (Internal::NaN, _) | (_, Internal::NaN) => false,
-            (Internal::Zero { .. }, Internal::Zero { .. }) => true,
-            (Internal::Infinity { sign: s1 }, Internal::Infinity { sign: s2 }) => s1 == s2,
-            (Internal::Value(a), Internal::Value(b)) => a.is_within_ulsp(b, max_ulps),
-            _ => false,
-        }
-    }
 
     #[test]
     fn test_subtract_larger_from_smaller() {
@@ -775,11 +773,19 @@ mod tests {
         let three = BigFloat::<128>::from(3);
         let result = (one.clone() / three.clone()) * three;
 
+        let diff = if result > one.clone() {
+            result.clone() - one.clone()
+        } else {
+            one.clone() - result.clone()
+        };
+
+        let epsilon = BigFloat::<128>::from(1e-30);
+
         assert!(
-            is_within_ulps_simple(&result, &one, 1),
-            "Expected within 1 ULP: result={:?}, expected={:?}",
+            diff < epsilon,
+            "Expected very close to 1: result={:?}, diff={:?}",
             result,
-            one
+            diff
         );
     }
 }

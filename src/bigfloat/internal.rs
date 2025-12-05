@@ -1,5 +1,6 @@
 mod regular_number;
 
+use core::f64;
 use regular_number::Number;
 use std::{
     cmp::Ordering,
@@ -447,5 +448,29 @@ impl<const PRECISION: usize> From<u32> for Internal<PRECISION> {
 impl<const PRECISION: usize> From<i32> for Internal<PRECISION> {
     fn from(value: i32) -> Self {
         Self::from(value as i64)
+    }
+}
+
+impl<const PRECISION: usize> From<f64> for Internal<PRECISION> {
+    fn from(value: f64) -> Self {
+        if value.is_nan() {
+            Self::NaN
+        } else if value.is_infinite() {
+            Self::Infinity {
+                sign: value.is_sign_negative(),
+            }
+        } else if value == 0.0 {
+            Self::Zero {
+                sign: value.is_sign_negative(),
+            }
+        } else {
+            Self::Value(Number::from(value))
+        }
+    }
+}
+
+impl<const PRECISION: usize> From<f32> for Internal<PRECISION> {
+    fn from(value: f32) -> Self {
+        Self::from(value as f64)
     }
 }
