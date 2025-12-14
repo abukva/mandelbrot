@@ -1,25 +1,32 @@
-use num::complex::Complex;
 use rayon::prelude::*;
 
-pub struct Config {
+pub mod bigcomplex;
+pub mod bigfloat;
+pub mod text_render;
+
+use bigcomplex::BigComplex;
+use bigfloat::BigFloat;
+
+type BigFloatPair<const PRECISION: usize> = (BigFloat<PRECISION>, BigFloat<PRECISION>);
+
+pub struct Config<const PRECISION: usize> {
     pub max_iter: usize,
-    pub bound: f64,
+    pub bound: BigFloat<PRECISION>,
     pub window_size: (usize, usize),
-    pub x_lims: (f64, f64),
-    pub y_lims: (f64, f64),
-    base_iter: usize,
-    initial_width: f64,
+    pub x_lims: (BigFloat<PRECISION>, BigFloat<PRECISION>),
+    pub y_lims: (BigFloat<PRECISION>, BigFloat<PRECISION>),
+    initial_width: BigFloat<PRECISION>,
 }
 
-impl Config {
+impl<const PRECISION: usize> Config<PRECISION> {
     pub fn new(
         max_iter: usize,
-        bound: f64,
+        bound: BigFloat<PRECISION>,
         window_size: (usize, usize),
-        x_lims: (f64, f64),
-        y_lims: (f64, f64),
-    ) -> Config {
-        let (x_min, x_max) = x_lims;
+        x_lims: BigFloatPair<PRECISION>,
+        y_lims: BigFloatPair<PRECISION>,
+    ) -> Config<PRECISION> {
+        let (x_min, x_max) = &x_lims;
         let initial_width = x_max - x_min;
 
         Config {
@@ -28,48 +35,50 @@ impl Config {
             window_size,
             x_lims,
             y_lims,
-            base_iter: max_iter,
             initial_width,
         }
     }
 
-    fn get_resolution(&self) -> (f64, f64) {
-        let (x_min, x_max) = self.x_lims;
-        let (y_min, y_max) = self.y_lims;
+    fn get_resolution(&self) -> BigFloatPair<PRECISION> {
+        let (x_min, x_max) = &self.x_lims;
+        let (y_min, y_max) = &self.y_lims;
         let (width, height) = self.window_size;
 
-        let delta_x = (x_max - x_min) / width as f64;
-        let delta_y = (y_max - y_min) / height as f64;
+        let delta_x = (x_max - x_min) / BigFloat::from(width as u64);
+        let delta_y = (y_max - y_min) / BigFloat::from(height as u64);
 
         (delta_x, delta_y)
     }
 }
 
-struct Pixel {
-    number: Complex<f64>,
+struct Pixel<const PRECISION: usize> {
+    number: BigComplex<PRECISION>,
 }
 
-impl Pixel {
-    fn new(config: &Config, coords: (usize, usize)) -> Pixel {
+impl<const PRECISION: usize> Pixel<PRECISION> {
+    fn new(config: &Config<PRECISION>, coords: (usize, usize)) -> Pixel<PRECISION> {
         let number = Self::get_complex_number(coords, config);
 
         Pixel { number }
     }
 
-    fn get_complex_number(coords: (usize, usize), config: &Config) -> Complex<f64> {
+    fn get_complex_number(
+        coords: (usize, usize),
+        config: &Config<PRECISION>,
+    ) -> BigComplex<PRECISION> {
         let (x_idx, y_idx) = coords;
-        let (x_min, _) = config.x_lims;
-        let (y_min, _) = config.y_lims;
+        let (x_min, _) = &config.x_lims;
+        let (y_min, _) = &config.y_lims;
 
         let (delta_x, delta_y) = config.get_resolution();
 
-        let x_coord = x_min + x_idx as f64 * delta_x;
-        let y_coord = y_min + y_idx as f64 * delta_y;
+        let x_coord = x_min + delta_x * x_idx as f64;
+        let y_coord = y_min + delta_y * y_idx as f64;
 
-        Complex::new(x_coord, y_coord)
+        BigComplex::<PRECISION>::from_bigfloat(&x_coord, &y_coord)
     }
 
-    fn iter_to_color(iter: f64, config: &Config) -> u32 {
+    fn iter_to_color(iter: f64, config: &Config<PRECISION>) -> u32 {
         let max_iter = config.max_iter as f64;
 
         if iter >= max_iter {
@@ -85,47 +94,48 @@ impl Pixel {
         ((color.r as u32) << 16) | ((color.g as u32) << 8) | (color.b as u32)
     }
 
-    fn get_color(&self, config: &Config) -> u32 {
+    fn get_color(&self, config: &Config<PRECISION>) -> u32 {
         let max_iter = self.get_iter(config);
         Self::iter_to_color(max_iter, config)
     }
 
-    fn get_iter(&self, config: &Config) -> f64 {
-        let c = self.number;
+    fn get_iter(&self, config: &Config<PRECISION>) -> f64 {
+        let c = &self.number;
         let mut smoothed_iter = config.max_iter as f64;
 
-        let re_shifted = c.re - 0.25;
-        let q = re_shifted * re_shifted + c.im * c.im;
-        let re_plus_one = c.re + 1.0;
+        let re_shifted = &c.re - 0.25;
+        let q = &re_shifted * &re_shifted + &c.im * &c.im;
+        let re_plus_one = &c.re + 1.0;
 
-        let cardioid_check = q * (q + re_shifted) < 0.25 * c.im * c.im;
-        let period_bulb_check = re_plus_one * re_plus_one + c.im * c.im < 0.0625;
+        let cardioid_check = &q * (&q + &re_shifted) < &c.im * &c.im * 0.25;
+        let period_bulb_check = &re_plus_one * &re_plus_one + &c.im * &c.im < 0.0625;
 
         if !(cardioid_check || period_bulb_check) {
-            let mut z = Complex::new(0.0, 0.0);
+            let mut z = BigComplex::<PRECISION>::from_float(0.0, 0.0);
 
             for iter in 1..config.max_iter {
-                z = z * z + c;
-                if z.norm() > config.bound {
+                z = &z * &z + c;
+                if z.norm_sq() > config.bound {
                     smoothed_iter = iter as f64;
                     break;
                 }
             }
-            smoothed_iter = smoothed_iter + 1.0 - z.norm().log2().log2();
+            // smoothed_iter = smoothed_iter + 1.0 - z.norm_sq().log2().log2();
+            // this should be a f64, I need to return f64 from BigFloat in order for this to work
         }
         smoothed_iter
     }
 }
 
-pub struct Image {
-    config: Config,
-    pixels: Box<[Pixel]>,
+pub struct Image<const PRECISION: usize> {
+    config: Config<PRECISION>,
+    pixels: Box<[Pixel<PRECISION>]>,
 }
 
-impl Image {
-    pub fn new(config: Config) -> Image {
+impl<const PRECISION: usize> Image<PRECISION> {
+    pub fn new(config: Config<PRECISION>) -> Image<PRECISION> {
         let (width, height) = config.window_size;
-        let mut data: Vec<Pixel> = Vec::new();
+        let mut data: Vec<Pixel<PRECISION>> = Vec::new();
 
         for y in 0..height {
             for x in 0..width {
@@ -152,7 +162,7 @@ impl Image {
 
     fn update_pixels(&mut self) {
         let (width, height) = self.config.window_size;
-        let mut data: Vec<Pixel> = Vec::new();
+        let mut data: Vec<Pixel<PRECISION>> = Vec::new();
 
         for y in 0..height {
             for x in 0..width {
@@ -172,18 +182,18 @@ impl Image {
         let x_window_move = delta_x * dx;
         let y_window_move = delta_y * dy;
 
-        let (x_min, x_max) = self.config.x_lims;
-        let (y_min, y_max) = self.config.y_lims;
+        let (x_min, x_max) = &self.config.x_lims;
+        let (y_min, y_max) = &self.config.y_lims;
 
-        self.config.x_lims = (x_min - x_window_move, x_max - x_window_move);
-        self.config.y_lims = (y_min - y_window_move, y_max - y_window_move);
+        self.config.x_lims = (x_min - &x_window_move, x_max - &x_window_move);
+        self.config.y_lims = (y_min - &y_window_move, y_max - &y_window_move);
     }
 
     pub fn zoom_window(&mut self, zoom: f32) {
         let zoom_factor = if zoom > 0.0 { 0.7 } else { 1.3 };
 
-        let (x_min, x_max) = self.config.x_lims;
-        let (y_min, y_max) = self.config.y_lims;
+        let (x_min, x_max) = &self.config.x_lims;
+        let (y_min, y_max) = &self.config.y_lims;
 
         let x_center = (x_max + x_min) / 2.0;
         let y_center = (y_max + y_min) / 2.0;
@@ -191,12 +201,12 @@ impl Image {
         let x_range = (x_max - x_min) * zoom_factor;
         let y_range = (y_max - y_min) * zoom_factor;
 
-        self.config.x_lims = (x_center - x_range / 2.0, x_center + x_range / 2.0);
-        self.config.y_lims = (y_center - y_range / 2.0, y_center + y_range / 2.0);
+        self.config.x_lims = (&x_center - &x_range / 2.0, &x_center + &x_range / 2.0);
+        self.config.y_lims = (&y_center - &y_range / 2.0, &y_center + &y_range / 2.0);
 
-        let sqrt_zoom = (self.config.initial_width / x_range).sqrt().max(0.0);
-        let additional_iter = (sqrt_zoom * 0.5) as usize;
-        self.config.max_iter = self.config.base_iter + additional_iter;
+        // let sqrt_zoom = (self.config.initial_width / x_range).sqrt().max(0.0);
+        // let additional_iter = (sqrt_zoom * 0.5) as usize;
+        // self.config.max_iter = self.config.base_iter + additional_iter;
     }
 
     pub fn update_max_iter(&mut self, iter_change: f64) {
@@ -204,12 +214,19 @@ impl Image {
         self.config.max_iter = new_max_iter as usize;
     }
 
-    pub fn get_image_info(&self) -> (f64, f64, f64, usize) {
-        let (x_min, x_max) = self.config.x_lims;
-        let (y_min, y_max) = self.config.y_lims;
+    pub fn get_image_info(
+        &self,
+    ) -> (
+        BigFloat<PRECISION>,
+        BigFloat<PRECISION>,
+        BigFloat<PRECISION>,
+        usize,
+    ) {
+        let (x_min, x_max) = &self.config.x_lims;
+        let (y_min, y_max) = &self.config.y_lims;
 
         let x_range = x_max - x_min;
-        let zoom = self.config.initial_width / x_range;
+        let zoom = &self.config.initial_width / x_range;
 
         let x_center = (x_max + x_min) / 2.0;
         let y_center = (y_max + y_min) / 2.0;

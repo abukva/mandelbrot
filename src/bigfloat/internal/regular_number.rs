@@ -29,6 +29,12 @@ impl<const PRECISION: usize> Number<PRECISION> {
         self.exponent.get_exponent()
     }
 
+    pub(super) fn abs(&self) -> Self {
+        let mut result = self.clone();
+        result.set_sign(false);
+        result
+    }
+
     fn empty(exponent: i64, sign: bool) -> Self {
         // Must have same sign and exponent
         Self {
@@ -326,7 +332,7 @@ impl<const PRECISION: usize> Number<PRECISION> {
         }
     }
 
-    fn set_sign(&mut self, sign: bool) {
+    pub(super) fn set_sign(&mut self, sign: bool) {
         self.sign = sign;
     }
 }
@@ -443,7 +449,7 @@ impl<const PRECISION: usize> From<f64> for Number<PRECISION> {
 
             shift_bits_internal(&mut limbs, shift.amount % 64, &shift.direction);
 
-            let exponent = -1022 - 52 - (leading_zeros as i64) - ((limbs_needed - 1) as i64 * 64);
+            let exponent = -1022 - 52 - (leading_zeros as i64) - (limbs_needed as i64 * 64);
 
             Self::from_components(limbs, ExponentState::Normal(exponent), sign)
         } else {
@@ -452,7 +458,7 @@ impl<const PRECISION: usize> From<f64> for Number<PRECISION> {
             limbs[limbs_needed - 1] = normalized_mantissa;
 
             let actual_exponent = exponent_bits - 1023;
-            let exponent = actual_exponent - 52 + 11 - ((limbs_needed - 1) as i64 * 64);
+            let exponent = actual_exponent + 1 - (limbs_needed as i64 * 64);
 
             Self::from_components(limbs, ExponentState::Normal(exponent), sign)
         }
@@ -521,13 +527,6 @@ mod tests {
         number.normalize_leading_zeros();
 
         assert_eq!(number.exponent.get_exponent(), 9);
-        fn to_value(limbs: &[u64], exponent: i64, sign: bool) -> f64 {
-            let mut mag = 0.0f64;
-            for (i, &limb) in limbs.iter().enumerate() {
-                mag += (limb as f64) * 2_f64.powi((i as i32) * 64 + exponent as i32);
-            }
-            if sign { -mag } else { mag }
-        }
         assert_eq!(number.limbs[num_limbs - 1], 0x8000_0000_0000_0000);
     }
 

@@ -1,23 +1,21 @@
-mod bigfloat;
-mod text_render;
-
-use mandelbrot_rust::{Config, Image};
+use mandelbrot_rust::{Config, Image, bigfloat::BigFloat, text_render::TextRender};
 use minifb::{Key, KeyRepeat, MouseButton, MouseMode, ScaleMode, Window, WindowOptions};
 
-use crate::text_render::TextRender;
+const PRECISION: usize = 256;
+type BF = BigFloat<PRECISION>;
 
 fn main() {
-    let x_center = -0.743030;
-    let y_center = 0.126433;
-    let config = Config::new(
+    let x_center = BF::from("-0.743030");
+    let y_center = BF::from("0.126433");
+    let config = Config::<PRECISION>::new(
         300,
-        2.0,
+        BF::from(4.0),
         (1920, 1080),
-        (x_center - 1.0, x_center + 1.0),
-        (y_center - 1.0, y_center + 1.0),
+        (&x_center - 1.0, &x_center + 1.0),
+        (&y_center - 1.0, &y_center + 1.0),
     );
 
-    let text_render = TextRender::new();
+    // let text_render = TextRender::new();
 
     let (width, height) = config.window_size;
 
@@ -85,22 +83,22 @@ fn main() {
 
         if needs_redraw {
             buffer = image.render();
-            let (zoom, x_center, y_center, max_iter) = image.get_image_info();
-            let text_info = format!(
-                "Zoom: {:.2e} Center: ({:.6}, {:.6})i MaxIter: {}",
-                zoom, x_center, y_center, max_iter
-            );
-
-            text_render.draw_text(
-                &mut buffer,
-                width,
-                height,
-                &text_info,
-                10,
-                10,
-                20.0,
-                0xFFFFFF,
-            );
+            // let (zoom, x_center, y_center, max_iter) = image.get_image_info();
+            // let text_info = format!(
+            //     "Zoom: {:.2e} Center: ({:.6}, {:.6})i MaxIter: {}",
+            //     zoom, x_center, y_center, max_iter
+            // );
+            //
+            // text_render.draw_text(
+            //     &mut buffer,
+            //     width,
+            //     height,
+            //     &text_info,
+            //     10,
+            //     10,
+            //     20.0,
+            //     0xFFFFFF,
+            // );
             needs_redraw = false;
         }
 

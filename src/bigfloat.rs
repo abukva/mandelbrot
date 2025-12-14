@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 mod internal;
 
 use internal::Internal;
@@ -35,13 +33,181 @@ impl<const PRECISION: usize> BigFloat<PRECISION> {
     pub fn is_nan(&self) -> bool {
         matches!(self.0, Internal::NaN)
     }
+
+    pub fn powi(&self, exponenet: i64) -> Self {
+        Self(self.0.powi(exponenet))
+    }
 }
 
-impl<const PRECISION: usize> Add for BigFloat<PRECISION> {
+// Operations with standard types
+
+// Add
+// F64
+impl<const PRECISION: usize> Add<f64> for BigFloat<PRECISION> {
+    type Output = Self;
+
+    fn add(self, other: f64) -> Self {
+        self + BigFloat::<PRECISION>::from(other)
+    }
+}
+
+impl<const PRECISION: usize> Add<f64> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+
+    fn add(self, other: f64) -> Self::Output {
+        self.clone() + BigFloat::<PRECISION>::from(other)
+    }
+}
+// U64
+impl<const PRECISION: usize> Add<u64> for BigFloat<PRECISION> {
+    type Output = Self;
+
+    fn add(self, other: u64) -> Self {
+        self + BigFloat::<PRECISION>::from(other)
+    }
+}
+
+impl<const PRECISION: usize> Add<u64> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+
+    fn add(self, other: u64) -> Self::Output {
+        self.clone() + BigFloat::<PRECISION>::from(other)
+    }
+}
+// Sub
+// F64
+impl<const PRECISION: usize> Sub<f64> for BigFloat<PRECISION> {
+    type Output = Self;
+
+    fn sub(self, other: f64) -> Self {
+        self - BigFloat::<PRECISION>::from(other)
+    }
+}
+
+impl<const PRECISION: usize> Sub<f64> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+
+    fn sub(self, other: f64) -> Self::Output {
+        self.clone() - BigFloat::<PRECISION>::from(other)
+    }
+}
+
+// U64
+impl<const PRECISION: usize> Sub<u64> for BigFloat<PRECISION> {
+    type Output = Self;
+
+    fn sub(self, other: u64) -> Self {
+        self - BigFloat::<PRECISION>::from(other)
+    }
+}
+
+impl<const PRECISION: usize> Sub<u64> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+
+    fn sub(self, other: u64) -> Self::Output {
+        self.clone() - BigFloat::<PRECISION>::from(other)
+    }
+}
+
+// Mul
+// F64
+impl<const PRECISION: usize> Mul<f64> for BigFloat<PRECISION> {
+    type Output = Self;
+
+    fn mul(self, other: f64) -> Self {
+        self * BigFloat::<PRECISION>::from(other)
+    }
+}
+
+impl<const PRECISION: usize> Mul<f64> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+
+    fn mul(self, other: f64) -> Self::Output {
+        self.clone() * BigFloat::<PRECISION>::from(other)
+    }
+}
+
+// U64
+impl<const PRECISION: usize> Mul<u64> for BigFloat<PRECISION> {
+    type Output = Self;
+
+    fn mul(self, other: u64) -> Self {
+        self * BigFloat::<PRECISION>::from(other)
+    }
+}
+
+impl<const PRECISION: usize> Mul<u64> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+
+    fn mul(self, other: u64) -> Self::Output {
+        self.clone() * BigFloat::<PRECISION>::from(other)
+    }
+}
+
+// Div
+// F64
+impl<const PRECISION: usize> Div<f64> for BigFloat<PRECISION> {
+    type Output = Self;
+
+    fn div(self, other: f64) -> Self {
+        self / BigFloat::<PRECISION>::from(other)
+    }
+}
+
+impl<const PRECISION: usize> Div<f64> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+
+    fn div(self, other: f64) -> Self::Output {
+        self.clone() / BigFloat::<PRECISION>::from(other)
+    }
+}
+
+// U64
+impl<const PRECISION: usize> Div<u64> for BigFloat<PRECISION> {
+    type Output = Self;
+
+    fn div(self, other: u64) -> Self {
+        self / BigFloat::<PRECISION>::from(other)
+    }
+}
+
+impl<const PRECISION: usize> Div<u64> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+
+    fn div(self, other: u64) -> Self::Output {
+        self.clone() / BigFloat::<PRECISION>::from(other)
+    }
+}
+
+impl<const PRECISION: usize> Add<BigFloat<PRECISION>> for BigFloat<PRECISION> {
     type Output = Self;
 
     fn add(self, other: Self) -> Self {
         Self(self.0 + other.0)
+    }
+}
+
+impl<const PRECISION: usize> Add<&BigFloat<PRECISION>> for BigFloat<PRECISION> {
+    type Output = Self;
+
+    fn add(self, other: &Self) -> Self {
+        Self(self.0 + other.clone().0)
+    }
+}
+
+impl<const PRECISION: usize> Add<BigFloat<PRECISION>> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+
+    fn add(self, other: Self::Output) -> Self::Output {
+        BigFloat::<PRECISION>(self.clone().0 + other.0)
+    }
+}
+
+impl<const PRECISION: usize> Add<&BigFloat<PRECISION>> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+
+    fn add(self, other: &BigFloat<PRECISION>) -> BigFloat<PRECISION> {
+        BigFloat::<PRECISION>(self.clone().0 + other.clone().0)
     }
 }
 
@@ -53,11 +219,53 @@ impl<const PRECISION: usize> Sub for BigFloat<PRECISION> {
     }
 }
 
+impl<const PRECISION: usize> Sub<&BigFloat<PRECISION>> for BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+    fn sub(self, other: &BigFloat<PRECISION>) -> BigFloat<PRECISION> {
+        BigFloat(self.0 - other.0.clone())
+    }
+}
+
+impl<const PRECISION: usize> Sub<BigFloat<PRECISION>> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+    fn sub(self, other: BigFloat<PRECISION>) -> BigFloat<PRECISION> {
+        BigFloat(self.0.clone() - other.0)
+    }
+}
+
+impl<const PRECISION: usize> Sub<&BigFloat<PRECISION>> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+    fn sub(self, other: &BigFloat<PRECISION>) -> BigFloat<PRECISION> {
+        BigFloat(self.0.clone() - other.0.clone())
+    }
+}
+
 impl<const PRECISION: usize> Mul for BigFloat<PRECISION> {
     type Output = Self;
 
     fn mul(self, other: Self) -> Self {
         Self(self.0 * other.0)
+    }
+}
+
+impl<const PRECISION: usize> Mul<&BigFloat<PRECISION>> for BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+    fn mul(self, other: &BigFloat<PRECISION>) -> BigFloat<PRECISION> {
+        BigFloat(self.0 * other.0.clone())
+    }
+}
+
+impl<const PRECISION: usize> Mul<BigFloat<PRECISION>> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+    fn mul(self, other: BigFloat<PRECISION>) -> BigFloat<PRECISION> {
+        BigFloat(self.0.clone() * other.0)
+    }
+}
+
+impl<const PRECISION: usize> Mul<&BigFloat<PRECISION>> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+    fn mul(self, other: &BigFloat<PRECISION>) -> BigFloat<PRECISION> {
+        BigFloat(self.0.clone() * other.0.clone())
     }
 }
 
@@ -69,15 +277,48 @@ impl<const PRECISION: usize> Div for BigFloat<PRECISION> {
     }
 }
 
+impl<const PRECISION: usize> Div<&BigFloat<PRECISION>> for BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+    fn div(self, other: &BigFloat<PRECISION>) -> BigFloat<PRECISION> {
+        BigFloat(self.0 / other.0.clone())
+    }
+}
+
+impl<const PRECISION: usize> Div<BigFloat<PRECISION>> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+    fn div(self, other: BigFloat<PRECISION>) -> BigFloat<PRECISION> {
+        BigFloat(self.0.clone() / other.0)
+    }
+}
+
+impl<const PRECISION: usize> Div<&BigFloat<PRECISION>> for &BigFloat<PRECISION> {
+    type Output = BigFloat<PRECISION>;
+    fn div(self, other: &BigFloat<PRECISION>) -> BigFloat<PRECISION> {
+        BigFloat(self.0.clone() / other.0.clone())
+    }
+}
+
 impl<const PRECISION: usize> PartialEq for BigFloat<PRECISION> {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
+impl<const PRECISION: usize> PartialEq<f64> for BigFloat<PRECISION> {
+    fn eq(&self, other: &f64) -> bool {
+        self.0 == Internal::from(*other)
+    }
+}
+
 impl<const PRECISION: usize> PartialOrd for BigFloat<PRECISION> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.0.partial_cmp(&other.0)
+    }
+}
+
+impl<const PRECISION: usize> PartialOrd<f64> for BigFloat<PRECISION> {
+    fn partial_cmp(&self, other: &f64) -> Option<Ordering> {
+        self.0.partial_cmp(&Internal::from(*other))
     }
 }
 
@@ -117,9 +358,29 @@ impl<const PRECISION: usize> From<f32> for BigFloat<PRECISION> {
     }
 }
 
+impl<const PRECISION: usize> From<&str> for BigFloat<PRECISION> {
+    fn from(text: &str) -> Self {
+        Self(Internal::from(text))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    type BF = BigFloat<128>;
+
+    fn are_same<const PRECISION: usize>(a: &BigFloat<PRECISION>, b: &BigFloat<PRECISION>) {
+        let diff = if a > b { a - b } else { b - a };
+
+        let epsilon = BigFloat::<PRECISION>::from(1e-10);
+
+        assert!(
+            diff < epsilon,
+            "Expected very close: result={:?}, diff={:?}",
+            a,
+            b
+        );
+    }
 
     #[test]
     fn test_subtract_larger_from_smaller() {
@@ -771,21 +1032,251 @@ mod tests {
     fn test_div_one_by_three_times_three() {
         let one = BigFloat::<128>::from(1);
         let three = BigFloat::<128>::from(3);
-        let result = (one.clone() / three.clone()) * three;
+        let result = (&one / &three) * &three;
 
-        let diff = if result > one.clone() {
-            result.clone() - one.clone()
-        } else {
-            one.clone() - result.clone()
-        };
+        are_same(&result, &one);
+    }
 
-        let epsilon = BigFloat::<128>::from(1e-30);
+    #[test]
+    fn test_powi_nan_propagation() {
+        let nan = BF::nan();
 
-        assert!(
-            diff < epsilon,
-            "Expected very close to 1: result={:?}, diff={:?}",
-            result,
-            diff
-        );
+        assert!(nan.powi(0).is_nan());
+        assert!(nan.powi(5).is_nan());
+        assert!(nan.powi(-5).is_nan());
+        assert!(nan.powi(100).is_nan());
+    }
+
+    #[test]
+    fn test_powi_exponent_zero() {
+        assert_eq!(BF::from(5).powi(0), BF::from(1));
+        assert_eq!(BF::from(-5).powi(0), BF::from(1));
+        assert_eq!(BF::from(0).powi(0), BF::from(1));
+        assert_eq!(BF::zero().powi(0), BF::from(1));
+        assert_eq!(BF::zero_negative(true).powi(0), BF::from(1));
+        assert_eq!(BF::infinity().powi(0), BF::from(1));
+        assert_eq!(BF::infinity_negative().powi(0), BF::from(1));
+    }
+
+    #[test]
+    fn test_powi_base_one() {
+        let one = BF::from(1);
+
+        assert_eq!(one.powi(0), BF::from(1));
+        assert_eq!(one.powi(1), BF::from(1));
+        assert_eq!(one.powi(100), BF::from(1));
+        assert_eq!(one.powi(-100), BF::from(1));
+        assert_eq!(one.powi(12345), BF::from(1));
+    }
+
+    #[test]
+    fn test_powi_zero_base_positive_odd_exponent() {
+        assert_eq!(BF::zero().powi(1), BF::zero());
+        assert_eq!(BF::zero().powi(3), BF::zero());
+        assert_eq!(BF::zero().powi(5), BF::zero());
+        assert_eq!(BF::zero().powi(99), BF::zero());
+
+        assert_eq!(BF::zero_negative(true).powi(1), BF::zero_negative(true));
+        assert_eq!(BF::zero_negative(true).powi(3), BF::zero_negative(true));
+        assert_eq!(BF::zero_negative(true).powi(5), BF::zero_negative(true));
+    }
+
+    #[test]
+    fn test_powi_zero_base_positive_even_exponent() {
+        assert_eq!(BF::zero().powi(2), BF::zero());
+        assert_eq!(BF::zero().powi(4), BF::zero());
+        assert_eq!(BF::zero().powi(100), BF::zero());
+
+        assert_eq!(BF::zero_negative(true).powi(2), BF::zero());
+        assert_eq!(BF::zero_negative(true).powi(4), BF::zero());
+        assert_eq!(BF::zero_negative(true).powi(100), BF::zero());
+    }
+
+    #[test]
+    fn test_powi_zero_base_negative_odd_exponent() {
+        assert_eq!(BF::zero().powi(-1), BF::infinity());
+        assert_eq!(BF::zero().powi(-3), BF::infinity());
+        assert_eq!(BF::zero().powi(-5), BF::infinity());
+        assert_eq!(BF::zero().powi(-99), BF::infinity());
+
+        assert_eq!(BF::zero_negative(true).powi(-1), BF::infinity_negative());
+        assert_eq!(BF::zero_negative(true).powi(-3), BF::infinity_negative());
+        assert_eq!(BF::zero_negative(true).powi(-5), BF::infinity_negative());
+    }
+
+    #[test]
+    fn test_powi_zero_base_negative_even_exponent() {
+        assert_eq!(BF::zero().powi(-2), BF::infinity());
+        assert_eq!(BF::zero().powi(-4), BF::infinity());
+        assert_eq!(BF::zero().powi(-100), BF::infinity());
+
+        assert_eq!(BF::zero_negative(true).powi(-2), BF::infinity());
+        assert_eq!(BF::zero_negative(true).powi(-4), BF::infinity());
+        assert_eq!(BF::zero_negative(true).powi(-100), BF::infinity());
+    }
+
+    #[test]
+    fn test_powi_positive_infinity_positive_exponent() {
+        assert_eq!(BF::infinity().powi(1), BF::infinity());
+        assert_eq!(BF::infinity().powi(2), BF::infinity());
+        assert_eq!(BF::infinity().powi(3), BF::infinity());
+        assert_eq!(BF::infinity().powi(100), BF::infinity());
+    }
+
+    #[test]
+    fn test_powi_positive_infinity_negative_exponent() {
+        assert_eq!(BF::infinity().powi(-1), BF::zero());
+        assert_eq!(BF::infinity().powi(-2), BF::zero());
+        assert_eq!(BF::infinity().powi(-3), BF::zero());
+        assert_eq!(BF::infinity().powi(-100), BF::zero());
+    }
+
+    #[test]
+    fn test_powi_negative_infinity_positive_odd_exponent() {
+        assert_eq!(BF::infinity_negative().powi(1), BF::infinity_negative());
+        assert_eq!(BF::infinity_negative().powi(3), BF::infinity_negative());
+        assert_eq!(BF::infinity_negative().powi(5), BF::infinity_negative());
+        assert_eq!(BF::infinity_negative().powi(99), BF::infinity_negative());
+    }
+
+    #[test]
+    fn test_powi_negative_infinity_positive_even_exponent() {
+        assert_eq!(BF::infinity_negative().powi(2), BF::infinity());
+        assert_eq!(BF::infinity_negative().powi(4), BF::infinity());
+        assert_eq!(BF::infinity_negative().powi(6), BF::infinity());
+        assert_eq!(BF::infinity_negative().powi(100), BF::infinity());
+    }
+
+    #[test]
+    fn test_powi_negative_infinity_negative_odd_exponent() {
+        assert_eq!(BF::infinity_negative().powi(-1), BF::zero_negative(true));
+        assert_eq!(BF::infinity_negative().powi(-3), BF::zero_negative(true));
+        assert_eq!(BF::infinity_negative().powi(-5), BF::zero_negative(true));
+        assert_eq!(BF::infinity_negative().powi(-99), BF::zero_negative(true));
+    }
+
+    #[test]
+    fn test_powi_negative_infinity_negative_even_exponent() {
+        assert_eq!(BF::infinity_negative().powi(-2), BF::zero());
+        assert_eq!(BF::infinity_negative().powi(-4), BF::zero());
+        assert_eq!(BF::infinity_negative().powi(-6), BF::zero());
+        assert_eq!(BF::infinity_negative().powi(-100), BF::zero());
+    }
+
+    #[test]
+    fn test_powi_positive_base_positive_exponent() {
+        assert_eq!(BF::from(2).powi(1), BF::from(2));
+        assert_eq!(BF::from(2).powi(2), BF::from(4));
+        assert_eq!(BF::from(2).powi(3), BF::from(8));
+        assert_eq!(BF::from(2).powi(4), BF::from(16));
+        assert_eq!(BF::from(2).powi(10), BF::from(1024));
+
+        assert_eq!(BF::from(3).powi(2), BF::from(9));
+        assert_eq!(BF::from(3).powi(3), BF::from(27));
+        assert_eq!(BF::from(3).powi(4), BF::from(81));
+
+        assert_eq!(BF::from(5).powi(2), BF::from(25));
+        assert_eq!(BF::from(5).powi(3), BF::from(125));
+
+        assert_eq!(BF::from(10).powi(3), BF::from(1000));
+        assert_eq!(BF::from(10).powi(6), BF::from(1_000_000));
+    }
+
+    #[test]
+    fn test_powi_negative_base_odd_exponent() {
+        assert_eq!(BF::from(-2).powi(1), BF::from(-2));
+        assert_eq!(BF::from(-2).powi(3), BF::from(-8));
+        assert_eq!(BF::from(-2).powi(5), BF::from(-32));
+
+        assert_eq!(BF::from(-3).powi(3), BF::from(-27));
+        assert_eq!(BF::from(-5).powi(3), BF::from(-125));
+    }
+
+    #[test]
+    fn test_powi_negative_base_even_exponent() {
+        assert_eq!(BF::from(-2).powi(2), BF::from(4));
+        assert_eq!(BF::from(-2).powi(4), BF::from(16));
+        assert_eq!(BF::from(-2).powi(6), BF::from(64));
+
+        assert_eq!(BF::from(-3).powi(2), BF::from(9));
+        assert_eq!(BF::from(-5).powi(2), BF::from(25));
+        assert_eq!(BF::from(-10).powi(2), BF::from(100));
+    }
+
+    #[test]
+    fn test_powi_negative_one_special_case() {
+        assert_eq!(BF::from(-1).powi(2), BF::from(1));
+        assert_eq!(BF::from(-1).powi(4), BF::from(1));
+        assert_eq!(BF::from(-1).powi(100), BF::from(1));
+        assert_eq!(BF::from(-1).powi(1000), BF::from(1));
+
+        assert_eq!(BF::from(-1).powi(1), BF::from(-1));
+        assert_eq!(BF::from(-1).powi(3), BF::from(-1));
+        assert_eq!(BF::from(-1).powi(99), BF::from(-1));
+        assert_eq!(BF::from(-1).powi(999), BF::from(-1));
+    }
+
+    #[test]
+    fn test_powi_large_exponents() {
+        assert_eq!(BF::from(2).powi(20), BF::from(1_048_576));
+        assert_eq!(BF::from(2).powi(30), BF::from(1_073_741_824));
+
+        assert_eq!(BF::from(3).powi(10), BF::from(59_049));
+    }
+
+    #[test]
+    fn test_powi_exponent_one() {
+        assert_eq!(BF::from(5).powi(1), BF::from(5));
+        assert_eq!(BF::from(-7).powi(1), BF::from(-7));
+        assert_eq!(BF::from(100).powi(1), BF::from(100));
+        assert_eq!(BF::from(-999).powi(1), BF::from(-999));
+    }
+
+    #[test]
+    fn test_powi_negative_exponents() {
+        let result = BF::from(2).powi(-1);
+        let expected = BF::from(1) / BF::from(2);
+        assert_eq!(result, expected);
+
+        let result = BF::from(2).powi(-2);
+        let expected = BF::from(1) / BF::from(4);
+        assert_eq!(result, expected);
+
+        let result = BF::from(10).powi(-3);
+        let expected = BF::from(1) / BF::from(1000);
+        assert_eq!(result, expected);
+
+        let result = BF::from(5).powi(-2);
+        let expected = BF::from(1) / BF::from(25);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_powi_edge_cases() {
+        assert_eq!(BF::zero().powi(1), BF::zero());
+
+        assert_eq!(BF::from(1000).powi(2), BF::from(1_000_000));
+
+        assert_eq!(BF::from(1).powi(1000), BF::from(1));
+    }
+
+    #[test]
+    fn test_integer_from_string() {
+        assert_eq!(BF::from("1389"), BF::from(1389));
+        assert_eq!(BF::from("1389.0"), BF::from(1389.0));
+    }
+
+    #[test]
+    fn test_decimal_from_string() {
+        are_same(&BF::from("1389.1389"), &BF::from(1389.1389));
+        assert_eq!(BF::from("1389.5"), BF::from(1389.5));
+    }
+
+    #[test]
+    fn test_decimal_from_string_multiplication() {
+        let a = BF::from("0.5");
+        let b = BF::from("2");
+
+        assert_eq!(&a * &b, BF::from(1.0));
     }
 }

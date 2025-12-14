@@ -1,10 +1,12 @@
 mod regular_number;
 
 use core::f64;
+use regex::Regex;
 use regular_number::Number;
 use std::{
     cmp::Ordering,
     ops::{Add, Div, Mul, Sub},
+    sync::OnceLock,
 };
 
 #[derive(Debug, Clone)]
@@ -15,26 +17,72 @@ pub(super) enum Internal<const PRECISION: usize> {
     NaN,
 }
 
+#[derive(Debug, Clone)]
+struct StringNumberParts<'a> {
+    sign: bool,
+    integer: &'a str,
+    decimal: Option<&'a str>,
+}
+
+impl StringNumberParts<'_> {
+    fn parse(s: &str) -> Option<StringNumberParts<'_>> {
+        static RE: OnceLock<Regex> = OnceLock::new();
+        let re = RE.get_or_init(|| Regex::new(r"^([+-]?)(\d+)(?:\.(\d+))?$").unwrap());
+
+        re.captures(s).map(|caps| {
+            let sign = matches!(caps.get(1).map(|m| m.as_str()), Some("-"));
+
+            StringNumberParts {
+                sign,
+                integer: caps.get(2).unwrap().as_str(),
+                decimal: caps.get(3).map(|m| m.as_str()),
+            }
+        })
+    }
+}
+
 impl<const PRECISION: usize> Internal<PRECISION> {
-    fn single_limb_div_rem(self, other: Self) -> (Self, Self) {
-        match (&self, &other) {
-            (Self::Value(numerator), Self::Value(denominator)) => {
-                let ((mantisa, exponent, sign), (r_mantissa, r_exp, r_sign)) =
-                    numerator.clone().single_limb_div_rem(denominator.clone());
-                match r_mantissa[..] {
-                    [0] => (
-                        Self::Value(Number::from_components(mantisa, exponent, sign)),
-                        Self::Zero {
-                            sign: numerator.get_sign(),
-                        },
-                    ),
-                    _ => (
-                        Self::Value(Number::from_components(mantisa, exponent, sign)),
-                        Self::Value(Number::from_components(r_mantissa, r_exp, r_sign)),
-                    ),
+    pub fn powi(&self, exponenet: i64) -> Self {
+        let one = Self::Value(Number::from(1));
+
+        match (self, exponenet) {
+            (Self::NaN, _) => Self::NaN,
+            (val, _) if val == &one => one,
+            (_, 0) => one,
+            (Self::Zero { sign }, exp) => {
+                let result_sign = if exp % 2 != 0 { *sign } else { false };
+                if exp > 0 {
+                    Self::Zero { sign: result_sign }
+                } else {
+                    Self::Infinity { sign: result_sign }
                 }
             }
-            _ => panic!("Not defined behaviour for {:?} / {:?}", self, other),
+            (Self::Infinity { sign: true }, exp) => {
+                let result_sign = exp % 2 != 0;
+                if exp < 0 {
+                    Self::Zero { sign: result_sign }
+                } else {
+                    Self::Infinity { sign: result_sign }
+                }
+            }
+            (Self::Infinity { sign: false }, exp) => {
+                if exp < 0 {
+                    Self::Zero { sign: false }
+                } else {
+                    Self::Infinity { sign: false }
+                }
+            }
+            (num @ Self::Value(_), exp) => {
+                let mut result = num.clone();
+                for _ in 1..exp.abs() {
+                    result = &result * num;
+                }
+                if exp > 0 {
+                    result
+                } else {
+                    Self::Value(Number::from(1)) / result
+                }
+            }
         }
     }
 }
@@ -472,5 +520,39 @@ impl<const PRECISION: usize> From<f64> for Internal<PRECISION> {
 impl<const PRECISION: usize> From<f32> for Internal<PRECISION> {
     fn from(value: f32) -> Self {
         Self::from(value as f64)
+    }
+}
+
+impl<const PRECISION: usize> From<&str> for Internal<PRECISION> {
+    fn from(text: &str) -> Self {
+        let str_number = StringNumberParts::parse(text).expect("Improper number format");
+        let mut result = Self::Zero { sign: false };
+
+        let full_digits = match str_number.decimal {
+            Some(decimal_str) => format!("{}{}", str_number.integer, decimal_str),
+            None => str_number.integer.to_string(),
+        };
+
+        for (exp, c) in full_digits.chars().rev().enumerate() {
+            let digit = c.to_digit(10).unwrap() as u64;
+            if digit != 0 {
+                result = result
+                    + Self::Value(Number::from(digit))
+                        * Self::Value(Number::from(10)).powi(exp as i64);
+            }
+        }
+
+        if let Some(decimal_str) = str_number.decimal {
+            let decimal_places = decimal_str.len() as i64;
+            result = result / Self::Value(Number::from(10)).powi(decimal_places);
+        }
+
+        match result {
+            Self::Value(mut num) => {
+                num.set_sign(str_number.sign);
+                Self::Value(num)
+            }
+            val => val,
+        }
     }
 }
