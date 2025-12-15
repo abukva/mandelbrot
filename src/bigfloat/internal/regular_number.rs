@@ -8,19 +8,19 @@ use std::{cmp::Ordering, ops::Neg};
 
 use exponent_state::ExponentState;
 
-type DivResult = (
-    (Vec<u64>, ExponentState, bool),
-    (Vec<u64>, ExponentState, bool),
+type DivResult<const N: usize> = (
+    ([u64; N], ExponentState, bool),
+    ([u64; N], ExponentState, bool),
 );
 
-#[derive(Debug, Clone)]
-pub(in crate::bigfloat) struct Number<const PRECISION: usize> {
-    limbs: Box<[u64]>,
+#[derive(Debug, Clone, Copy)]
+pub(in crate::bigfloat) struct Number<const LIMBS: usize> {
+    limbs: [u64; LIMBS],
     exponent: ExponentState,
     sign: bool,
 }
 
-impl<const PRECISION: usize> Number<PRECISION> {
+impl<const LIMBS: usize> Number<LIMBS> {
     pub(super) fn get_sign(&self) -> bool {
         self.sign
     }
@@ -30,7 +30,7 @@ impl<const PRECISION: usize> Number<PRECISION> {
     }
 
     pub(super) fn abs(&self) -> Self {
-        let mut result = self.clone();
+        let mut result = *self;
         result.set_sign(false);
         result
     }
@@ -38,15 +38,19 @@ impl<const PRECISION: usize> Number<PRECISION> {
     fn empty(exponent: i64, sign: bool) -> Self {
         // Must have same sign and exponent
         Self {
-            limbs: vec![0; PRECISION.div_ceil(64)].into_boxed_slice(),
+            limbs: [0; LIMBS],
             exponent: ExponentState::Normal(exponent),
             sign,
         }
     }
 
-    pub(super) fn from_components(limbs: Vec<u64>, exponent: ExponentState, sign: bool) -> Self {
+    pub(super) fn from_components(
+        limbs: [u64; LIMBS],
+        exponent: ExponentState,
+        sign: bool,
+    ) -> Self {
         Self {
-            limbs: limbs.into_boxed_slice(),
+            limbs,
             exponent,
             sign,
         }
@@ -68,6 +72,7 @@ impl<const PRECISION: usize> Number<PRECISION> {
         matches!(self.exponent, ExponentState::Underflow)
     }
 
+    #[inline]
     fn normalize(&mut self, other: &mut Self) {
         let self_exp = self.exponent.get_exponent();
 
@@ -86,6 +91,7 @@ impl<const PRECISION: usize> Number<PRECISION> {
         }
     }
 
+    #[inline]
     fn change_exponent(&mut self, diff: i64) {
         if diff == 0 {
             return;
@@ -108,6 +114,7 @@ impl<const PRECISION: usize> Number<PRECISION> {
     }
 
     // Negative value means to shift to left, positive to the right
+    #[inline]
     fn shift_bits(&mut self, bit_shift: BitShift) {
         let BitShift { amount, direction } = bit_shift;
 
@@ -123,10 +130,11 @@ impl<const PRECISION: usize> Number<PRECISION> {
         }
     }
 
+    #[inline]
     pub(super) fn add_magnitudes(mut self, mut other: Self, result_sign: bool) -> Self {
         self.normalize(&mut other);
 
-        let (limbs, carry) = add_limbs(&self.limbs, &other.limbs, false);
+        let (limbs, carry) = add_limbs::<LIMBS>(&self.limbs, &other.limbs, false);
         let result_exponent = self.exponent.get_exponent();
         let mut result =
             Self::from_components(limbs, ExponentState::Normal(result_exponent), result_sign);
@@ -142,6 +150,7 @@ impl<const PRECISION: usize> Number<PRECISION> {
         result
     }
 
+    #[inline]
     pub(super) fn sub_magnitudes(mut self, mut other: Self, force_sign: bool) -> Self {
         self.normalize(&mut other);
 
@@ -160,7 +169,7 @@ impl<const PRECISION: usize> Number<PRECISION> {
             (other, self, !force_sign)
         };
 
-        let (limbs, _) = sub_limbs(&larger.limbs, &smaller.limbs, false);
+        let (limbs, _) = sub_limbs::<LIMBS>(&larger.limbs, &smaller.limbs, false);
         let result_exponent = larger.exponent.get_exponent();
         let mut result =
             Self::from_components(limbs, ExponentState::Normal(result_exponent), result_sign);
@@ -169,11 +178,15 @@ impl<const PRECISION: usize> Number<PRECISION> {
         result
     }
 
-    pub(super) fn mul_magnitudes(self, other: Self) -> Self {
+    #[inline]
+    pub(super) fn mul_magnitudes(self, other: Self) -> Self
+    where
+        [(); 2 * LIMBS]:,
+    {
         let result_sign = self.get_sign() != other.get_sign();
-        let (limbs, shift_amount) = mul_limbs(&self.limbs, &other.limbs);
+        let (limbs, shift_amount) = mul_limbs::<LIMBS>(&self.limbs, &other.limbs);
 
-        let result_exponent = ExponentState::sum_exponents(vec![
+        let result_exponent = ExponentState::sum_exponents(&[
             self.get_exponent(),
             other.get_exponent(),
             shift_amount,
@@ -185,6 +198,7 @@ impl<const PRECISION: usize> Number<PRECISION> {
         result
     }
 
+    #[inline]
     fn algorithm_q(u: &[u64], v: &[u64]) -> u64 {
         let b: u128 = 1 << 64;
 
@@ -213,63 +227,75 @@ impl<const PRECISION: usize> Number<PRECISION> {
         q as u64
     }
 
-    fn knuth_div_rem(self, other: Self) -> DivResult {
-        let n = self.get_num_limbs();
+    #[inline]
+    fn knuth_div_rem(self, other: Self) -> DivResult<LIMBS>
+    where
+        [(); 2 * LIMBS + 1]:,
+        [(); LIMBS + 1]:,
+    {
+        let mut u = [0; 2 * LIMBS + 1];
+        u[LIMBS..2 * LIMBS].copy_from_slice(&self.limbs);
 
-        let mut u = vec![0; 2 * n + 1];
-        u[n..2 * n].copy_from_slice(&self.limbs);
+        let mut v_extended = [0u64; LIMBS + 1];
+        v_extended[..LIMBS].copy_from_slice(&other.limbs);
+        let mut q = [0; LIMBS + 1];
 
-        let v = &other.limbs;
-        let mut q = vec![0; n + 1];
+        for k in (0..=LIMBS).rev() {
+            let mut q_k = Self::algorithm_q(&u[k..k + LIMBS + 1], &other.limbs);
 
-        for k in (0..=n).rev() {
-            let mut q_k = Self::algorithm_q(&u[k..k + n + 1], v);
+            // Use LIMBS + 1 sized operations
+            let q_k_times_v = mul_limbs_by_single::<LIMBS>(&other.limbs, q_k);
 
-            let q_k_times_v = mul_limbs_by_single(v, q_k);
+            let u_slice: [u64; LIMBS + 1] = u[k..k + LIMBS + 1].try_into().unwrap();
+            let (diff, borrow) = sub_limbs::<{ LIMBS + 1 }>(&u_slice, &q_k_times_v, false);
 
-            let (diff, borrow) = sub_limbs(&u[k..k + n + 1], &q_k_times_v, false);
-
-            u[k..k + n + 1].copy_from_slice(&diff);
+            u[k..k + LIMBS + 1].copy_from_slice(&diff);
 
             if borrow {
                 q_k -= 1;
-                let (sum, _) = add_limbs(&u[k..k + n + 1], v, false);
-                u[k..k + n + 1].copy_from_slice(&sum);
+                let u_slice: [u64; LIMBS + 1] = u[k..k + LIMBS + 1].try_into().unwrap();
+                let (sum, _) = add_limbs::<{ LIMBS + 1 }>(&u_slice, &v_extended, false);
+                u[k..k + LIMBS + 1].copy_from_slice(&sum);
             }
             q[k] = q_k;
         }
 
-        let mut r = u[0..n].to_vec();
+        let mut r: [u64; LIMBS] = u[0..LIMBS].try_into().unwrap();
 
-        let overflow = round_limbs(&mut q, v, &r);
+        let overflow = round_limbs::<LIMBS>(&mut q, &v_extended, &r);
 
         let q_shift = normalize_and_shift_limbs(&mut q);
         let overflow_adjustemnt = if overflow { 1i64 } else { 0i64 };
 
-        let q_exp = ExponentState::sum_exponents(vec![
+        let q_exp = ExponentState::sum_exponents(&[
             self.get_exponent(),
             -other.get_exponent(),
-            -((n - 1) as i64 * 64),
+            -((LIMBS - 1) as i64 * 64),
             -(q_shift as i64),
             overflow_adjustemnt,
         ]);
 
         let r_shift = normalize_and_shift_limbs(&mut r);
-        let r_exp = ExponentState::sum_exponents(vec![
+        let r_exp = ExponentState::sum_exponents(&[
             self.get_exponent(),
-            -(n as i64 * 64),
+            -(LIMBS as i64 * 64),
             -(r_shift as i64),
         ]);
 
         (
-            (q[1..].to_vec(), q_exp, self.get_sign() != other.get_sign()),
+            (
+                q[1..].try_into().unwrap(),
+                q_exp,
+                self.get_sign() != other.get_sign(),
+            ),
             (r, r_exp, self.get_sign()),
         )
     }
 
     // For my normalized representation of numbers this is actual floating-point division
-    // where reminder is just the error I introduced by doing a truncation to certain bit PRECISION
-    pub(super) fn single_limb_div_rem(self, other: Self) -> DivResult {
+    // where reminder is just the error I introduced by doing a truncation to certain bit LIMBS
+    #[inline]
+    pub(super) fn single_limb_div_rem(self, other: Self) -> DivResult<LIMBS> {
         let dividend = (self.limbs[0] as u128) << 64;
         let divisor = other.limbs[0] as u128;
 
@@ -289,14 +315,14 @@ impl<const PRECISION: usize> Number<PRECISION> {
             let lz_r = remainder.leading_zeros();
             (
                 remainder << lz_r,
-                ExponentState::sum_exponents(vec![self.get_exponent(), -64, -(lz_r as i64)]),
+                ExponentState::sum_exponents(&[self.get_exponent(), -64, -(lz_r as i64)]),
             )
         };
 
         let lz = quotient.leading_zeros();
         let normalized = quotient << lz;
         let mantissa = (normalized >> 64) as u64;
-        let exponent = ExponentState::sum_exponents(vec![
+        let exponent = ExponentState::sum_exponents(&[
             self.get_exponent(),
             -other.get_exponent(),
             -(lz as i64),
@@ -304,15 +330,20 @@ impl<const PRECISION: usize> Number<PRECISION> {
 
         (
             (
-                vec![mantissa],
+                [mantissa; LIMBS],
                 exponent,
                 self.get_sign() != other.get_sign(),
             ),
-            (vec![r_mantissa], r_exp, self.get_sign()),
+            ([r_mantissa; LIMBS], r_exp, self.get_sign()),
         )
     }
 
-    pub(super) fn div_magnitudes(self, other: Self) -> Self {
+    #[inline]
+    pub(super) fn div_magnitudes(self, other: Self) -> Self
+    where
+        [(); 2 * LIMBS + 1]:,
+        [(); LIMBS + 1]:,
+    {
         match self.get_num_limbs() {
             1 => {
                 let ((q_m, q_e, q_s), _) = self.single_limb_div_rem(other);
@@ -325,6 +356,7 @@ impl<const PRECISION: usize> Number<PRECISION> {
         }
     }
 
+    #[inline]
     fn normalize_leading_zeros(&mut self) {
         let total_shift = get_normalization_leading_zeros_limb(&mut self.limbs);
         if total_shift != 0 {
@@ -337,7 +369,7 @@ impl<const PRECISION: usize> Number<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> Neg for Number<PRECISION> {
+impl<const LIMBS: usize> Neg for Number<LIMBS> {
     type Output = Self;
 
     fn neg(mut self) -> Self {
@@ -346,7 +378,7 @@ impl<const PRECISION: usize> Neg for Number<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> PartialEq for Number<PRECISION> {
+impl<const LIMBS: usize> PartialEq for Number<LIMBS> {
     fn eq(&self, other: &Self) -> bool {
         self.exponent.get_exponent() == other.exponent.get_exponent()
             && self.get_sign() == other.get_sign()
@@ -354,7 +386,7 @@ impl<const PRECISION: usize> PartialEq for Number<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> PartialOrd for Number<PRECISION> {
+impl<const LIMBS: usize> PartialOrd for Number<LIMBS> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match self.sign.cmp(&other.sign) {
             Ordering::Equal => {}
@@ -383,16 +415,16 @@ impl<const PRECISION: usize> PartialOrd for Number<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> From<u64> for Number<PRECISION> {
+impl<const LIMBS: usize> From<u64> for Number<LIMBS> {
     fn from(value: u64) -> Self {
-        let limbs_needed = PRECISION.div_ceil(64);
+        let limbs_needed = LIMBS;
         let leading_zeros = value.leading_zeros();
 
         let msb_position = 63 - leading_zeros;
 
         let normalized = value << leading_zeros;
 
-        let mut limbs = vec![0; limbs_needed].into_boxed_slice();
+        let mut limbs = [0; LIMBS];
         limbs[limbs_needed - 1] = normalized;
 
         Self {
@@ -403,7 +435,7 @@ impl<const PRECISION: usize> From<u64> for Number<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> From<i64> for Number<PRECISION> {
+impl<const LIMBS: usize> From<i64> for Number<LIMBS> {
     fn from(value: i64) -> Self {
         if value >= 0 {
             Self::from(value as u64)
@@ -416,27 +448,27 @@ impl<const PRECISION: usize> From<i64> for Number<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> From<u32> for Number<PRECISION> {
+impl<const LIMBS: usize> From<u32> for Number<LIMBS> {
     fn from(value: u32) -> Self {
         Self::from(value as u64)
     }
 }
 
-impl<const PRECISION: usize> From<i32> for Number<PRECISION> {
+impl<const LIMBS: usize> From<i32> for Number<LIMBS> {
     fn from(value: i32) -> Self {
         Self::from(value as i64)
     }
 }
 
-impl<const PRECISION: usize> From<f64> for Number<PRECISION> {
+impl<const LIMBS: usize> From<f64> for Number<LIMBS> {
     fn from(value: f64) -> Self {
         let bits = value.to_bits();
         let sign = (bits >> 63) != 0;
         let exponent_bits = ((bits >> 52) & 0x7FF) as i64;
         let mantissa_bits = bits & 0xFFFFFFFFFFFFF;
 
-        let limbs_needed = PRECISION.div_ceil(64);
-        let mut limbs = vec![0u64; limbs_needed];
+        let limbs_needed = LIMBS;
+        let mut limbs = [0u64; LIMBS];
 
         let is_subnormal = exponent_bits == 0;
 
@@ -465,7 +497,7 @@ impl<const PRECISION: usize> From<f64> for Number<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> From<f32> for Number<PRECISION> {
+impl<const LIMBS: usize> From<f32> for Number<LIMBS> {
     fn from(value: f32) -> Self {
         Self::from(value as f64)
     }
@@ -489,7 +521,7 @@ mod tests {
         }
     }
 
-    fn to_value_tuple(t: &(Vec<u64>, ExponentState, bool)) -> f64 {
+    fn to_value_tuple<const N: usize>(t: &([u64; N], ExponentState, bool)) -> f64 {
         to_value(&t.0, t.1, t.2)
     }
 
@@ -497,7 +529,7 @@ mod tests {
 
     #[test]
     fn test_normalize_leading_zeros_all_zeros() {
-        let mut number: Number<128> = Number::empty(0, false);
+        let mut number: Number<2> = Number::empty(0, false);
         let original_exponent = number.exponent.get_exponent();
 
         number.normalize_leading_zeros();
@@ -508,7 +540,7 @@ mod tests {
 
     #[test]
     fn test_normalize_leading_zeros_no_leading_zeros() {
-        let mut number: Number<128> = Number::empty(10, false);
+        let mut number: Number<2> = Number::empty(10, false);
         let num_limbs = number.limbs.len();
         number.limbs[num_limbs - 1] = 0x8000_0000_0000_0000;
 
@@ -520,7 +552,7 @@ mod tests {
 
     #[test]
     fn test_normalize_leading_zeros_single_bit_shift() {
-        let mut number: Number<128> = Number::empty(10, false);
+        let mut number: Number<2> = Number::empty(10, false);
         let num_limbs = number.limbs.len();
         number.limbs[num_limbs - 1] = 0x4000_0000_0000_0000;
 
@@ -532,7 +564,7 @@ mod tests {
 
     #[test]
     fn test_normalize_leading_zeros_multiple_bits() {
-        let mut number: Number<128> = Number::empty(20, false);
+        let mut number: Number<2> = Number::empty(20, false);
         let num_limbs = number.limbs.len();
         number.limbs[num_limbs - 1] = 0x0010_0000_0000_0000;
 
@@ -544,7 +576,7 @@ mod tests {
 
     #[test]
     fn test_normalize_leading_zeros_one_full_limb() {
-        let mut number: Number<128> = Number::empty(100, false);
+        let mut number: Number<2> = Number::empty(100, false);
         let num_limbs = number.limbs.len();
         number.limbs[num_limbs - 1] = 0;
         number.limbs[num_limbs - 2] = 0x8000_0000_0000_0000;
@@ -557,7 +589,7 @@ mod tests {
 
     #[test]
     fn test_normalize_leading_zeros_full_limb_plus_bits() {
-        let mut number: Number<128> = Number::empty(100, false);
+        let mut number: Number<2> = Number::empty(100, false);
         let num_limbs = number.limbs.len();
         number.limbs[num_limbs - 1] = 0;
         number.limbs[num_limbs - 2] = 0x0100_0000_0000_0000;
@@ -570,8 +602,8 @@ mod tests {
 
     #[test]
     fn test_normalize_leading_zeros_preserves_sign() {
-        let mut positive_number: Number<128> = Number::empty(10, false);
-        let mut negative_number: Number<128> = Number::empty(10, true);
+        let mut positive_number: Number<2> = Number::empty(10, false);
+        let mut negative_number: Number<2> = Number::empty(10, true);
 
         let num_limbs = positive_number.limbs.len();
         positive_number.limbs[num_limbs - 1] = 0x4000_0000_0000_0000;
@@ -600,7 +632,7 @@ mod tests {
 
     #[test]
     fn test_normalize_leading_zeros_exponent_underflow() {
-        let mut number: Number<128> = Number::empty(-100, false);
+        let mut number: Number<2> = Number::empty(-100, false);
         let num_limbs = number.limbs.len();
         number.limbs[num_limbs - 1] = 0x0000_0000_0000_0001;
 
@@ -617,7 +649,7 @@ mod tests {
 
     #[test]
     fn test_normalize_leading_zeros_small_value() {
-        let mut number: Number<128> = Number::empty(5, false);
+        let mut number: Number<2> = Number::empty(5, false);
         number.limbs[0] = 0x0000_0000_0000_0001;
 
         number.normalize_leading_zeros();
@@ -629,29 +661,29 @@ mod tests {
 
     #[test]
     fn test_mul_magnitudes_simple() {
-        let a: Number<128> = Number::from(2u64);
-        let b: Number<128> = Number::from(3u64);
+        let a: Number<2> = Number::from(2u64);
+        let b: Number<2> = Number::from(3u64);
         let result = a.mul_magnitudes(b);
-        let expected: Number<128> = Number::from(6u64);
+        let expected: Number<2> = Number::from(6u64);
 
         assert_eq!(result, expected);
     }
 
     #[test]
     fn test_mul_magnitudes_powers_of_two() {
-        let a: Number<128> = Number::from(4u64);
-        let b: Number<128> = Number::from(8u64);
+        let a: Number<2> = Number::from(4u64);
+        let b: Number<2> = Number::from(8u64);
         let result = a.mul_magnitudes(b);
-        let expected: Number<128> = Number::from(32u64);
+        let expected: Number<2> = Number::from(32u64);
 
         assert_eq!(result, expected);
     }
 
     #[test]
     fn test_mul_magnitudes_one() {
-        let a: Number<128> = Number::from(42u64);
-        let b: Number<128> = Number::from(1u64);
-        let result = a.clone().mul_magnitudes(b);
+        let a: Number<2> = Number::from(42u64);
+        let b: Number<2> = Number::from(1u64);
+        let result = a.mul_magnitudes(b);
 
         assert_eq!(result, a);
     }
@@ -668,20 +700,20 @@ mod tests {
 
     #[test]
     fn test_mul_magnitudes_exponent_addition() {
-        let a: Number<128> = Number::from(16u64);
-        let b: Number<128> = Number::from(32u64);
+        let a: Number<2> = Number::from(16u64);
+        let b: Number<2> = Number::from(32u64);
         let result = a.mul_magnitudes(b);
 
-        let expected: Number<128> = Number::from(512u64);
+        let expected: Number<2> = Number::from(512u64);
         assert_eq!(result, expected);
     }
 
     #[test]
     fn test_mul_magnitudes_different_sizes() {
-        let a: Number<128> = Number::from(1000u64);
-        let b: Number<128> = Number::from(5u64);
+        let a: Number<2> = Number::from(1000u64);
+        let b: Number<2> = Number::from(5u64);
         let result = a.mul_magnitudes(b);
-        let expected: Number<128> = Number::from(5000u64);
+        let expected: Number<2> = Number::from(5000u64);
 
         assert_eq!(result, expected);
     }
@@ -698,8 +730,8 @@ mod tests {
 
     #[test]
     fn test_mul_magnitudes_preserves_normalization() {
-        let a: Number<128> = Number::from(7u64);
-        let b: Number<128> = Number::from(9u64);
+        let a: Number<2> = Number::from(7u64);
+        let b: Number<2> = Number::from(9u64);
         let result = a.mul_magnitudes(b);
 
         let msb_limb = result.limbs[result.limbs.len() - 1];
@@ -712,8 +744,8 @@ mod tests {
 
     #[test]
     fn test_mul_magnitudes_sign_handling() {
-        let a: Number<128> = Number::from(-5i64);
-        let b: Number<128> = Number::from(3i64);
+        let a: Number<2> = Number::from(-5i64);
+        let b: Number<2> = Number::from(3i64);
         let result = a.mul_magnitudes(b);
 
         assert!(result.get_sign());
@@ -721,8 +753,8 @@ mod tests {
 
     #[test]
     fn test_mul_magnitudes_both_negative() {
-        let a: Number<128> = Number::from(-4i64);
-        let b: Number<128> = Number::from(-7i64);
+        let a: Number<2> = Number::from(-4i64);
+        let b: Number<2> = Number::from(-7i64);
         let result = a.mul_magnitudes(b);
 
         assert!(!result.get_sign());
@@ -730,10 +762,10 @@ mod tests {
 
     #[test]
     fn test_mul_magnitudes_commutative() {
-        let a: Number<128> = Number::from(13u64);
-        let b: Number<128> = Number::from(17u64);
+        let a: Number<2> = Number::from(13u64);
+        let b: Number<2> = Number::from(17u64);
 
-        let result1 = a.clone().mul_magnitudes(b.clone());
+        let result1 = a.mul_magnitudes(b);
         let result2 = b.mul_magnitudes(a);
 
         assert_eq!(result1, result2);
@@ -751,10 +783,8 @@ mod tests {
 
     #[test]
     fn test_one_divided_by_one() {
-        let a: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-63), false);
-        let b: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-63), false);
+        let a: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-63), false);
+        let b: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-63), false);
 
         let ((q_m, q_e, q_s), (r_m, _, _)) = a.single_limb_div_rem(b);
 
@@ -765,10 +795,8 @@ mod tests {
 
     #[test]
     fn test_two_divided_by_one() {
-        let a: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-62), false);
-        let b: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-63), false);
+        let a: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-62), false);
+        let b: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-63), false);
 
         let ((q_m, q_e, q_s), (r_m, _, _)) = a.single_limb_div_rem(b);
 
@@ -779,10 +807,8 @@ mod tests {
 
     #[test]
     fn test_one_divided_by_two() {
-        let a: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-63), false);
-        let b: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-62), false);
+        let a: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-63), false);
+        let b: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-62), false);
 
         let ((q_m, q_e, q_s), (r_m, _, _)) = a.single_limb_div_rem(b);
 
@@ -793,13 +819,9 @@ mod tests {
 
     #[test]
     fn test_three_divided_by_two() {
-        let a: Number<64> = Number::from_components(
-            vec![0xC000_0000_0000_0000],
-            ExponentState::Normal(-62),
-            false,
-        );
-        let b: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-62), false);
+        let a: Number<1> =
+            Number::from_components([0xC000_0000_0000_0000], ExponentState::Normal(-62), false);
+        let b: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-62), false);
 
         let ((q_m, q_e, q_s), _) = a.single_limb_div_rem(b);
 
@@ -809,13 +831,10 @@ mod tests {
 
     #[test]
     fn test_division_identity() {
-        let a: Number<64> = Number::from_components(
-            vec![0xAAAA_BBBB_CCCC_DDDD],
-            ExponentState::Normal(10),
-            false,
-        );
-        let b: Number<64> =
-            Number::from_components(vec![0x8888_9999_AAAA_BBBB], ExponentState::Normal(5), false);
+        let a: Number<1> =
+            Number::from_components([0xAAAA_BBBB_CCCC_DDDD], ExponentState::Normal(10), false);
+        let b: Number<1> =
+            Number::from_components([0x8888_9999_AAAA_BBBB], ExponentState::Normal(5), false);
 
         let a_val = to_value(&[0xAAAA_BBBB_CCCC_DDDD], ExponentState::Normal(10), false);
         let b_val = to_value(&[0x8888_9999_AAAA_BBBB], ExponentState::Normal(5), false);
@@ -831,10 +850,8 @@ mod tests {
 
     #[test]
     fn test_negative_dividend() {
-        let a: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-61), true);
-        let b: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-62), false);
+        let a: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-61), true);
+        let b: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-62), false);
 
         let ((q_m, q_e, q_s), (_, _, r_s)) = a.single_limb_div_rem(b);
 
@@ -846,10 +863,8 @@ mod tests {
 
     #[test]
     fn test_negative_divisor() {
-        let a: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-61), false);
-        let b: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-62), true);
+        let a: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-61), false);
+        let b: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-62), true);
 
         let ((q_m, q_e, q_s), (_, _, r_s)) = a.single_limb_div_rem(b);
 
@@ -861,10 +876,8 @@ mod tests {
 
     #[test]
     fn test_both_negative() {
-        let a: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-61), true);
-        let b: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-62), true);
+        let a: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-61), true);
+        let b: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-62), true);
 
         let ((q_m, q_e, q_s), _) = a.single_limb_div_rem(b);
 
@@ -875,10 +888,10 @@ mod tests {
 
     #[test]
     fn test_msb_always_set() {
-        let a: Number<64> =
-            Number::from_components(vec![0x8000_0000_0000_0001], ExponentState::Normal(0), false);
-        let b: Number<64> =
-            Number::from_components(vec![0xFFFF_FFFF_FFFF_FFFF], ExponentState::Normal(0), false);
+        let a: Number<1> =
+            Number::from_components([0x8000_0000_0000_0001], ExponentState::Normal(0), false);
+        let b: Number<1> =
+            Number::from_components([0xFFFF_FFFF_FFFF_FFFF], ExponentState::Normal(0), false);
 
         let ((q_m, _, _), _) = a.single_limb_div_rem(b);
 
@@ -887,10 +900,8 @@ mod tests {
 
     #[test]
     fn test_zero_remainder_handled() {
-        let a: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-61), false);
-        let b: Number<64> =
-            Number::from_components(vec![1u64 << 63], ExponentState::Normal(-62), false);
+        let a: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-61), false);
+        let b: Number<1> = Number::from_components([1u64 << 63], ExponentState::Normal(-62), false);
 
         let ((q_m, q_e, q_s), (r_m, _, _)) = a.single_limb_div_rem(b);
 
@@ -901,8 +912,8 @@ mod tests {
 
     #[test]
     fn test_handpicked_digits() {
-        let a: Number<64> = Number::from(2356);
-        let b: Number<64> = Number::from(395);
+        let a: Number<1> = Number::from(2356);
+        let b: Number<1> = Number::from(395);
 
         let ((q_m, q_e, q_s), (_, _, _)) = a.single_limb_div_rem(b);
 
@@ -912,10 +923,10 @@ mod tests {
 
     #[test]
     fn test_knuth_one_divided_by_one() {
-        let a: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-127), false);
-        let b: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-127), false);
+        let a: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-127), false);
+        let b: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-127), false);
 
         let (q, _) = a.knuth_div_rem(b);
 
@@ -929,10 +940,10 @@ mod tests {
 
     #[test]
     fn test_knuth_two_divided_by_one() {
-        let a: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-126), false);
-        let b: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-127), false);
+        let a: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-126), false);
+        let b: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-127), false);
 
         let (q, _) = a.knuth_div_rem(b);
 
@@ -946,10 +957,10 @@ mod tests {
 
     #[test]
     fn test_knuth_one_divided_by_two() {
-        let a: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-127), false);
-        let b: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-126), false);
+        let a: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-127), false);
+        let b: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-126), false);
 
         let (q, _) = a.knuth_div_rem(b);
 
@@ -963,13 +974,13 @@ mod tests {
 
     #[test]
     fn test_knuth_three_divided_by_two() {
-        let a: Number<128> = Number::from_components(
-            vec![0, 0xC000_0000_0000_0000],
+        let a: Number<2> = Number::from_components(
+            [0, 0xC000_0000_0000_0000],
             ExponentState::Normal(-126),
             false,
         );
-        let b: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-126), false);
+        let b: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-126), false);
 
         let (q, _) = a.knuth_div_rem(b);
 
@@ -983,19 +994,19 @@ mod tests {
 
     #[test]
     fn test_knuth_division_identity() {
-        let a: Number<128> = Number::from_components(
-            vec![0xDEAD_BEEF_CAFE_BABE, 0xAAAA_BBBB_CCCC_DDDD],
+        let a: Number<2> = Number::from_components(
+            [0xDEAD_BEEF_CAFE_BABE, 0xAAAA_BBBB_CCCC_DDDD],
             ExponentState::Normal(10),
             false,
         );
-        let b: Number<128> = Number::from_components(
-            vec![0x1234_5678_9ABC_DEF0, 0x8888_9999_AAAA_BBBB],
+        let b: Number<2> = Number::from_components(
+            [0x1234_5678_9ABC_DEF0, 0x8888_9999_AAAA_BBBB],
             ExponentState::Normal(5),
             false,
         );
 
-        let a_val = to_value_tuple(&(a.limbs.to_vec(), a.exponent, a.get_sign()));
-        let b_val = to_value_tuple(&(b.limbs.to_vec(), b.exponent, b.get_sign()));
+        let a_val = to_value_tuple(&(a.limbs, a.exponent, a.get_sign()));
+        let b_val = to_value_tuple(&(b.limbs, b.exponent, b.get_sign()));
 
         let (q, r) = a.knuth_div_rem(b);
 
@@ -1015,10 +1026,10 @@ mod tests {
 
     #[test]
     fn test_knuth_negative_dividend() {
-        let a: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-125), true);
-        let b: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-126), false);
+        let a: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-125), true);
+        let b: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-126), false);
 
         let (q, r) = a.knuth_div_rem(b);
 
@@ -1034,10 +1045,10 @@ mod tests {
 
     #[test]
     fn test_knuth_negative_divisor() {
-        let a: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-125), false);
-        let b: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-126), true);
+        let a: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-125), false);
+        let b: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-126), true);
 
         let (q, r) = a.knuth_div_rem(b);
 
@@ -1053,10 +1064,10 @@ mod tests {
 
     #[test]
     fn test_knuth_both_negative() {
-        let a: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-125), true);
-        let b: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-126), true);
+        let a: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-125), true);
+        let b: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-126), true);
 
         let (q, _) = a.knuth_div_rem(b);
 
@@ -1071,13 +1082,13 @@ mod tests {
 
     #[test]
     fn test_knuth_quotient_msb_set() {
-        let a: Number<128> = Number::from_components(
-            vec![0x0000_0000_0000_0001, 0x8000_0000_0000_0000],
+        let a: Number<2> = Number::from_components(
+            [0x0000_0000_0000_0001, 0x8000_0000_0000_0000],
             ExponentState::Normal(0),
             false,
         );
-        let b: Number<128> = Number::from_components(
-            vec![0xFFFF_FFFF_FFFF_FFFF, 0xFFFF_FFFF_FFFF_FFFF],
+        let b: Number<2> = Number::from_components(
+            [0xFFFF_FFFF_FFFF_FFFF, 0xFFFF_FFFF_FFFF_FFFF],
             ExponentState::Normal(0),
             false,
         );
@@ -1094,10 +1105,10 @@ mod tests {
 
     #[test]
     fn test_knuth_large_dividend_small_divisor() {
-        let a: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(100), false);
-        let b: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-100), false);
+        let a: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(100), false);
+        let b: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-100), false);
 
         let (q, _) = a.knuth_div_rem(b);
 
@@ -1114,10 +1125,10 @@ mod tests {
 
     #[test]
     fn test_knuth_small_dividend_large_divisor() {
-        let a: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(-100), false);
-        let b: Number<128> =
-            Number::from_components(vec![0, 1u64 << 63], ExponentState::Normal(100), false);
+        let a: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(-100), false);
+        let b: Number<2> =
+            Number::from_components([0, 1u64 << 63], ExponentState::Normal(100), false);
 
         let (q, _) = a.knuth_div_rem(b);
 
@@ -1134,13 +1145,13 @@ mod tests {
 
     #[test]
     fn test_knuth_same_numbers() {
-        let a: Number<128> = Number::from_components(
-            vec![0x1234_5678_ABCD_EF00, 0xFEDC_BA98_7654_3210],
+        let a: Number<2> = Number::from_components(
+            [0x1234_5678_ABCD_EF00, 0xFEDC_BA98_7654_3210],
             ExponentState::Normal(42),
             false,
         );
-        let b: Number<128> = Number::from_components(
-            vec![0x1234_5678_ABCD_EF00, 0xFEDC_BA98_7654_3210],
+        let b: Number<2> = Number::from_components(
+            [0x1234_5678_ABCD_EF00, 0xFEDC_BA98_7654_3210],
             ExponentState::Normal(42),
             false,
         );
@@ -1157,14 +1168,14 @@ mod tests {
 
     #[test]
     fn test_knuth_pi_approximation() {
-        let a: Number<128> = Number::from_components(
-            vec![0, 0xB180_0000_0000_0000],
+        let a: Number<2> = Number::from_components(
+            [0, 0xB180_0000_0000_0000],
             ExponentState::Normal(-118),
             false,
         );
 
-        let b: Number<128> = Number::from_components(
-            vec![0, 0xE200_0000_0000_0000],
+        let b: Number<2> = Number::from_components(
+            [0, 0xE200_0000_0000_0000],
             ExponentState::Normal(-120),
             false,
         );
@@ -1183,8 +1194,8 @@ mod tests {
 
     #[test]
     fn test_knuth_handpicked_numbers() {
-        let a: Number<128> = Number::from(123456789123456789u64);
-        let b: Number<128> = Number::from(123456789);
+        let a: Number<2> = Number::from(123456789123456789u64);
+        let b: Number<2> = Number::from(123456789);
 
         let (q, _) = a.knuth_div_rem(b);
         let quotient = to_value_tuple(&q);
