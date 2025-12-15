@@ -132,6 +132,7 @@ where
 impl<const LIMBS: usize> Add for Internal<LIMBS> {
     type Output = Self;
 
+    #[inline]
     fn add(self, other: Self) -> Self {
         match (self, other) {
             (Self::NaN, _) | (_, Self::NaN) => Self::NaN,
@@ -175,6 +176,7 @@ impl<const LIMBS: usize> Add for Internal<LIMBS> {
 impl<const LIMBS: usize> Sub for Internal<LIMBS> {
     type Output = Self;
 
+    #[inline]
     fn sub(self, other: Self) -> Self {
         match (self, other) {
             (Self::NaN, _) | (_, Self::NaN) => Self::NaN,
@@ -224,6 +226,7 @@ where
 {
     type Output = Self;
 
+    #[inline]
     fn mul(self, other: Self) -> Self {
         match (self, other) {
             (Self::NaN, _) | (_, Self::NaN) => Self::NaN,
@@ -296,6 +299,7 @@ where
 {
     type Output = Self;
 
+    #[inline]
     fn div(self, other: Self) -> Self {
         match (self, other) {
             (Self::NaN, _) | (_, Self::NaN) => Self::NaN,
@@ -359,6 +363,7 @@ where
 }
 
 impl<const LIMBS: usize> PartialEq for Internal<LIMBS> {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         match (&self, &other) {
             (Self::NaN, Self::NaN) => false,
@@ -373,6 +378,7 @@ impl<const LIMBS: usize> PartialEq for Internal<LIMBS> {
 }
 
 impl<const LIMBS: usize> PartialOrd for Internal<LIMBS> {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (&self, &other) {
             (Self::NaN, _) | (_, Self::NaN) => None,
@@ -419,6 +425,7 @@ impl<const LIMBS: usize> PartialOrd for Internal<LIMBS> {
 }
 
 impl<const LIMBS: usize> From<u64> for Internal<LIMBS> {
+    #[inline]
     fn from(value: u64) -> Self {
         match value {
             0 => Self::Zero { sign: false },
@@ -428,6 +435,7 @@ impl<const LIMBS: usize> From<u64> for Internal<LIMBS> {
 }
 
 impl<const LIMBS: usize> From<i64> for Internal<LIMBS> {
+    #[inline]
     fn from(value: i64) -> Self {
         match value {
             0 => Self::Zero { sign: false },
@@ -437,18 +445,21 @@ impl<const LIMBS: usize> From<i64> for Internal<LIMBS> {
 }
 
 impl<const LIMBS: usize> From<u32> for Internal<LIMBS> {
+    #[inline]
     fn from(value: u32) -> Self {
         Self::from(value as u64)
     }
 }
 
 impl<const LIMBS: usize> From<i32> for Internal<LIMBS> {
+    #[inline]
     fn from(value: i32) -> Self {
         Self::from(value as i64)
     }
 }
 
 impl<const LIMBS: usize> From<f64> for Internal<LIMBS> {
+    #[inline]
     fn from(value: f64) -> Self {
         if value.is_nan() {
             Self::NaN
@@ -467,6 +478,7 @@ impl<const LIMBS: usize> From<f64> for Internal<LIMBS> {
 }
 
 impl<const LIMBS: usize> From<f32> for Internal<LIMBS> {
+    #[inline]
     fn from(value: f32) -> Self {
         Self::from(value as f64)
     }

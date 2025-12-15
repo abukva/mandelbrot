@@ -6,6 +6,7 @@ pub enum ExponentState {
 }
 
 impl ExponentState {
+    #[inline]
     pub(super) fn get_exponent(&self) -> i64 {
         match self {
             ExponentState::Normal(e) => *e,
@@ -13,6 +14,7 @@ impl ExponentState {
         }
     }
 
+    #[inline]
     pub(super) fn sum_exponents(exponents: &[i64]) -> Self {
         let sum: i128 = exponents.iter().map(|&x| x as i128).sum();
 

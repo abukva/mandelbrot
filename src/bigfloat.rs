@@ -144,6 +144,7 @@ where
 impl<const LIMBS: usize> Add for BigFloat<LIMBS> {
     type Output = Self;
 
+    #[inline]
     fn add(self, other: Self) -> Self {
         Self(self.0 + other.0)
     }
@@ -152,6 +153,7 @@ impl<const LIMBS: usize> Add for BigFloat<LIMBS> {
 impl<const LIMBS: usize> Sub for BigFloat<LIMBS> {
     type Output = Self;
 
+    #[inline]
     fn sub(self, other: Self) -> Self {
         Self(self.0 - other.0)
     }
@@ -163,6 +165,7 @@ where
 {
     type Output = Self;
 
+    #[inline]
     fn mul(self, other: Self) -> Self {
         Self(self.0 * other.0)
     }
@@ -175,66 +178,77 @@ where
 {
     type Output = Self;
 
+    #[inline]
     fn div(self, other: Self) -> Self {
         Self(self.0 / other.0)
     }
 }
 
 impl<const LIMBS: usize> PartialEq for BigFloat<LIMBS> {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
 impl<const LIMBS: usize> PartialEq<f64> for BigFloat<LIMBS> {
+    #[inline]
     fn eq(&self, other: &f64) -> bool {
         self.0 == Internal::from(*other)
     }
 }
 
 impl<const LIMBS: usize> PartialOrd for BigFloat<LIMBS> {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.0.partial_cmp(&other.0)
     }
 }
 
 impl<const LIMBS: usize> PartialOrd<f64> for BigFloat<LIMBS> {
+    #[inline]
     fn partial_cmp(&self, other: &f64) -> Option<Ordering> {
         self.0.partial_cmp(&Internal::from(*other))
     }
 }
 
 impl<const LIMBS: usize> From<u64> for BigFloat<LIMBS> {
+    #[inline]
     fn from(value: u64) -> Self {
         Self(Internal::from(value))
     }
 }
 
 impl<const LIMBS: usize> From<i64> for BigFloat<LIMBS> {
+    #[inline]
     fn from(value: i64) -> Self {
         Self(Internal::from(value))
     }
 }
 
 impl<const LIMBS: usize> From<u32> for BigFloat<LIMBS> {
+    #[inline]
     fn from(value: u32) -> Self {
         Self::from(value as u64)
     }
 }
 
 impl<const LIMBS: usize> From<i32> for BigFloat<LIMBS> {
+    #[inline]
     fn from(value: i32) -> Self {
         Self::from(value as i64)
     }
 }
 
 impl<const LIMBS: usize> From<f64> for BigFloat<LIMBS> {
+    #[inline]
     fn from(value: f64) -> Self {
         Self(Internal::from(value))
     }
 }
 
 impl<const LIMBS: usize> From<f32> for BigFloat<LIMBS> {
+    #[inline]
     fn from(value: f32) -> Self {
         Self::from(value as f64)
     }

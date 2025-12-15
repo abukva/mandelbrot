@@ -11,6 +11,7 @@ pub struct BitShift {
 // Convention is that positive amount will shift to the right, and negative to the left, like a
 // number line
 impl BitShift {
+    #[inline]
     pub fn new(signed_amount: i64) -> BitShift {
         let direction = match signed_amount.signum() {
             v if v < 0 => BitShiftDirection::Left,

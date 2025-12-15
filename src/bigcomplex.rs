@@ -9,10 +9,12 @@ pub struct BigComplex<const LIMBS: usize> {
 }
 
 impl<const LIMBS: usize> BigComplex<LIMBS> {
+    #[inline]
     pub fn from_bigfloat(re: &BigFloat<LIMBS>, im: &BigFloat<LIMBS>) -> Self {
         Self { re: *re, im: *im }
     }
 
+    #[inline]
     pub fn from_float(re: f64, im: f64) -> Self {
         Self {
             re: BigFloat::<LIMBS>::from(re),
@@ -20,6 +22,7 @@ impl<const LIMBS: usize> BigComplex<LIMBS> {
         }
     }
 
+    #[inline]
     pub fn norm_sq(&self) -> BigFloat<LIMBS>
     where
         [(); 2 * LIMBS + 1]:,
@@ -112,6 +115,7 @@ where
 impl<const LIMBS: usize> Add for BigComplex<LIMBS> {
     type Output = Self;
 
+    #[inline]
     fn add(self, other: Self) -> Self {
         Self {
             re: self.re + other.re,
@@ -123,6 +127,7 @@ impl<const LIMBS: usize> Add for BigComplex<LIMBS> {
 impl<const LIMBS: usize> Add<BigFloat<LIMBS>> for BigComplex<LIMBS> {
     type Output = Self;
 
+    #[inline]
     fn add(self, other: BigFloat<LIMBS>) -> Self {
         Self {
             re: self.re + other,
@@ -136,6 +141,7 @@ impl<const LIMBS: usize> Add<BigFloat<LIMBS>> for BigComplex<LIMBS> {
 impl<const LIMBS: usize> Sub for BigComplex<LIMBS> {
     type Output = Self;
 
+    #[inline]
     fn sub(self, other: Self) -> Self {
         Self {
             re: self.re - other.re,
@@ -152,6 +158,7 @@ where
 {
     type Output = Self;
 
+    #[inline]
     fn mul(self, other: Self) -> Self {
         Self {
             re: self.re * other.re - self.im * other.im,
@@ -169,6 +176,7 @@ where
 {
     type Output = Self;
 
+    #[inline]
     fn div(self, other: Self) -> Self {
         Self {
             re: (self.re * other.re + self.im * other.im) / (other.re.powi(2) + other.im.powi(2)),
@@ -178,6 +186,7 @@ where
 }
 
 impl<const LIMBS: usize> From<f64> for BigComplex<LIMBS> {
+    #[inline]
     fn from(value: f64) -> Self {
         Self {
             re: BigFloat::<LIMBS>::from(value),
@@ -187,6 +196,7 @@ impl<const LIMBS: usize> From<f64> for BigComplex<LIMBS> {
 }
 
 impl<const LIMBS: usize> From<u64> for BigComplex<LIMBS> {
+    #[inline]
     fn from(value: u64) -> Self {
         Self {
             re: BigFloat::<LIMBS>::from(value),
