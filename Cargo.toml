@@ -11,3 +11,13 @@ minifb = "0.28.0"
 num = "0.4.3"
 rayon = "1.11.0"
 regex = "1.12.2"
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+
+[profile.profiling]
+inherits = "release"
+debug = true
+
+

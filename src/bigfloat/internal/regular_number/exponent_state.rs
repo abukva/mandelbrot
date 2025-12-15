@@ -13,7 +13,7 @@ impl ExponentState {
         }
     }
 
-    pub(super) fn sum_exponents(exponents: Vec<i64>) -> Self {
+    pub(super) fn sum_exponents(exponents: &[i64]) -> Self {
         let sum: i128 = exponents.iter().map(|&x| x as i128).sum();
 
         if sum > i64::MAX as i128 {

@@ -9,9 +9,9 @@ use std::{
     sync::OnceLock,
 };
 
-#[derive(Debug, Clone)]
-pub(super) enum Internal<const PRECISION: usize> {
-    Value(Number<PRECISION>),
+#[derive(Debug, Clone, Copy)]
+pub(super) enum Internal<const LIMBS: usize> {
+    Value(Number<LIMBS>),
     Zero { sign: bool },
     Infinity { sign: bool },
     NaN,
@@ -41,7 +41,11 @@ impl StringNumberParts<'_> {
     }
 }
 
-impl<const PRECISION: usize> Internal<PRECISION> {
+impl<const LIMBS: usize> Internal<LIMBS>
+where
+    [(); 2 * LIMBS + 1]:,
+    [(); LIMBS + 1]:,
+{
     pub fn powi(&self, exponenet: i64) -> Self {
         let one = Self::Value(Number::from(1));
 
@@ -73,9 +77,9 @@ impl<const PRECISION: usize> Internal<PRECISION> {
                 }
             }
             (num @ Self::Value(_), exp) => {
-                let mut result = num.clone();
+                let mut result = *num;
                 for _ in 1..exp.abs() {
-                    result = &result * num;
+                    result = result * (*num);
                 }
                 if exp > 0 {
                     result
@@ -87,7 +91,45 @@ impl<const PRECISION: usize> Internal<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> Add for Internal<PRECISION> {
+impl<const LIMBS: usize> Internal<LIMBS>
+where
+    [(); 2 * LIMBS + 1]:,
+    [(); LIMBS + 1]:,
+{
+    pub fn parse(text: &str) -> Self {
+        let str_number = StringNumberParts::parse(text).expect("Improper number format");
+        let mut result = Self::Zero { sign: false };
+
+        let full_digits = match str_number.decimal {
+            Some(decimal_str) => format!("{}{}", str_number.integer, decimal_str),
+            None => str_number.integer.to_string(),
+        };
+
+        for (exp, c) in full_digits.chars().rev().enumerate() {
+            let digit = c.to_digit(10).unwrap() as u64;
+            if digit != 0 {
+                result = result
+                    + Self::Value(Number::from(digit))
+                        * Self::Value(Number::from(10)).powi(exp as i64);
+            }
+        }
+
+        if let Some(decimal_str) = str_number.decimal {
+            let decimal_places = decimal_str.len() as i64;
+            result = result / Self::Value(Number::from(10)).powi(decimal_places);
+        }
+
+        match result {
+            Self::Value(mut num) => {
+                num.set_sign(str_number.sign);
+                Self::Value(num)
+            }
+            val => val,
+        }
+    }
+}
+
+impl<const LIMBS: usize> Add for Internal<LIMBS> {
     type Output = Self;
 
     fn add(self, other: Self) -> Self {
@@ -130,7 +172,7 @@ impl<const PRECISION: usize> Add for Internal<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> Sub for Internal<PRECISION> {
+impl<const LIMBS: usize> Sub for Internal<LIMBS> {
     type Output = Self;
 
     fn sub(self, other: Self) -> Self {
@@ -176,7 +218,10 @@ impl<const PRECISION: usize> Sub for Internal<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> Mul for Internal<PRECISION> {
+impl<const LIMBS: usize> Mul for Internal<LIMBS>
+where
+    [(); 2 * LIMBS + 1]:,
+{
     type Output = Self;
 
     fn mul(self, other: Self) -> Self {
@@ -244,7 +289,11 @@ impl<const PRECISION: usize> Mul for Internal<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> Div for Internal<PRECISION> {
+impl<const LIMBS: usize> Div for Internal<LIMBS>
+where
+    [(); 2 * LIMBS + 1]:,
+    [(); LIMBS + 1]:,
+{
     type Output = Self;
 
     fn div(self, other: Self) -> Self {
@@ -309,7 +358,7 @@ impl<const PRECISION: usize> Div for Internal<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> PartialEq for Internal<PRECISION> {
+impl<const LIMBS: usize> PartialEq for Internal<LIMBS> {
     fn eq(&self, other: &Self) -> bool {
         match (&self, &other) {
             (Self::NaN, Self::NaN) => false,
@@ -323,7 +372,7 @@ impl<const PRECISION: usize> PartialEq for Internal<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> PartialOrd for Internal<PRECISION> {
+impl<const LIMBS: usize> PartialOrd for Internal<LIMBS> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (&self, &other) {
             (Self::NaN, _) | (_, Self::NaN) => None,
@@ -369,107 +418,7 @@ impl<const PRECISION: usize> PartialOrd for Internal<PRECISION> {
     }
 }
 
-// Implementing Add for Number
-impl<const PRECISION: usize> Add<&Internal<PRECISION>> for &Internal<PRECISION> {
-    type Output = Internal<PRECISION>;
-
-    fn add(self, other: &Internal<PRECISION>) -> Internal<PRECISION> {
-        self.clone() + other.clone()
-    }
-}
-
-impl<const PRECISION: usize> Add<&Internal<PRECISION>> for Internal<PRECISION> {
-    type Output = Internal<PRECISION>;
-
-    fn add(self, other: &Internal<PRECISION>) -> Internal<PRECISION> {
-        self + other.clone()
-    }
-}
-
-impl<const PRECISION: usize> Add<Internal<PRECISION>> for &Internal<PRECISION> {
-    type Output = Internal<PRECISION>;
-
-    fn add(self, other: Internal<PRECISION>) -> Internal<PRECISION> {
-        self.clone() + other
-    }
-}
-
-// Implementing Sub for Number
-impl<const PRECISION: usize> Sub<&Internal<PRECISION>> for &Internal<PRECISION> {
-    type Output = Internal<PRECISION>;
-
-    fn sub(self, other: &Internal<PRECISION>) -> Internal<PRECISION> {
-        self.clone() - other.clone()
-    }
-}
-
-impl<const PRECISION: usize> Sub<&Internal<PRECISION>> for Internal<PRECISION> {
-    type Output = Internal<PRECISION>;
-
-    fn sub(self, other: &Internal<PRECISION>) -> Internal<PRECISION> {
-        self - other.clone()
-    }
-}
-
-impl<const PRECISION: usize> Sub<Internal<PRECISION>> for &Internal<PRECISION> {
-    type Output = Internal<PRECISION>;
-
-    fn sub(self, other: Internal<PRECISION>) -> Internal<PRECISION> {
-        self.clone() - other
-    }
-}
-
-// Implementing Mul for Number
-impl<const PRECISION: usize> Mul<&Internal<PRECISION>> for &Internal<PRECISION> {
-    type Output = Internal<PRECISION>;
-
-    fn mul(self, other: &Internal<PRECISION>) -> Internal<PRECISION> {
-        self.clone() * other.clone()
-    }
-}
-
-impl<const PRECISION: usize> Mul<&Internal<PRECISION>> for Internal<PRECISION> {
-    type Output = Internal<PRECISION>;
-
-    fn mul(self, other: &Internal<PRECISION>) -> Internal<PRECISION> {
-        self * other.clone()
-    }
-}
-
-impl<const PRECISION: usize> Mul<Internal<PRECISION>> for &Internal<PRECISION> {
-    type Output = Internal<PRECISION>;
-
-    fn mul(self, other: Internal<PRECISION>) -> Internal<PRECISION> {
-        self.clone() * other
-    }
-}
-
-// Implementing Div for Number
-impl<const PRECISION: usize> Div<&Internal<PRECISION>> for &Internal<PRECISION> {
-    type Output = Internal<PRECISION>;
-
-    fn div(self, other: &Internal<PRECISION>) -> Internal<PRECISION> {
-        self.clone() / other.clone()
-    }
-}
-
-impl<const PRECISION: usize> Div<&Internal<PRECISION>> for Internal<PRECISION> {
-    type Output = Internal<PRECISION>;
-
-    fn div(self, other: &Internal<PRECISION>) -> Internal<PRECISION> {
-        self / other.clone()
-    }
-}
-
-impl<const PRECISION: usize> Div<Internal<PRECISION>> for &Internal<PRECISION> {
-    type Output = Internal<PRECISION>;
-
-    fn div(self, other: Internal<PRECISION>) -> Internal<PRECISION> {
-        self.clone() / other
-    }
-}
-
-impl<const PRECISION: usize> From<u64> for Internal<PRECISION> {
+impl<const LIMBS: usize> From<u64> for Internal<LIMBS> {
     fn from(value: u64) -> Self {
         match value {
             0 => Self::Zero { sign: false },
@@ -478,7 +427,7 @@ impl<const PRECISION: usize> From<u64> for Internal<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> From<i64> for Internal<PRECISION> {
+impl<const LIMBS: usize> From<i64> for Internal<LIMBS> {
     fn from(value: i64) -> Self {
         match value {
             0 => Self::Zero { sign: false },
@@ -487,19 +436,19 @@ impl<const PRECISION: usize> From<i64> for Internal<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> From<u32> for Internal<PRECISION> {
+impl<const LIMBS: usize> From<u32> for Internal<LIMBS> {
     fn from(value: u32) -> Self {
         Self::from(value as u64)
     }
 }
 
-impl<const PRECISION: usize> From<i32> for Internal<PRECISION> {
+impl<const LIMBS: usize> From<i32> for Internal<LIMBS> {
     fn from(value: i32) -> Self {
         Self::from(value as i64)
     }
 }
 
-impl<const PRECISION: usize> From<f64> for Internal<PRECISION> {
+impl<const LIMBS: usize> From<f64> for Internal<LIMBS> {
     fn from(value: f64) -> Self {
         if value.is_nan() {
             Self::NaN
@@ -517,42 +466,8 @@ impl<const PRECISION: usize> From<f64> for Internal<PRECISION> {
     }
 }
 
-impl<const PRECISION: usize> From<f32> for Internal<PRECISION> {
+impl<const LIMBS: usize> From<f32> for Internal<LIMBS> {
     fn from(value: f32) -> Self {
         Self::from(value as f64)
-    }
-}
-
-impl<const PRECISION: usize> From<&str> for Internal<PRECISION> {
-    fn from(text: &str) -> Self {
-        let str_number = StringNumberParts::parse(text).expect("Improper number format");
-        let mut result = Self::Zero { sign: false };
-
-        let full_digits = match str_number.decimal {
-            Some(decimal_str) => format!("{}{}", str_number.integer, decimal_str),
-            None => str_number.integer.to_string(),
-        };
-
-        for (exp, c) in full_digits.chars().rev().enumerate() {
-            let digit = c.to_digit(10).unwrap() as u64;
-            if digit != 0 {
-                result = result
-                    + Self::Value(Number::from(digit))
-                        * Self::Value(Number::from(10)).powi(exp as i64);
-            }
-        }
-
-        if let Some(decimal_str) = str_number.decimal {
-            let decimal_places = decimal_str.len() as i64;
-            result = result / Self::Value(Number::from(10)).powi(decimal_places);
-        }
-
-        match result {
-            Self::Value(mut num) => {
-                num.set_sign(str_number.sign);
-                Self::Value(num)
-            }
-            val => val,
-        }
     }
 }

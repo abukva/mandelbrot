@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 
 use super::bitshift::BitShiftDirection;
 
+#[inline]
 pub(super) fn shift_limbs(limbs: &mut [u64], limb_count: usize, direction: &BitShiftDirection) {
     let len = limbs.len();
     let to_rotate = limb_count.min(len);
@@ -18,6 +19,7 @@ pub(super) fn shift_limbs(limbs: &mut [u64], limb_count: usize, direction: &BitS
     }
 }
 
+#[inline]
 pub(super) fn shift_bits_internal(limbs: &mut [u64], amount: u64, direction: &BitShiftDirection) {
     match direction {
         BitShiftDirection::Left => {
@@ -49,6 +51,7 @@ pub(super) fn shift_bits_internal(limbs: &mut [u64], amount: u64, direction: &Bi
     }
 }
 
+#[inline]
 pub(super) fn normalize_and_shift_limbs(limbs: &mut [u64]) -> usize {
     let shift_amount = get_normalization_leading_zeros_limb(limbs);
 
@@ -71,8 +74,13 @@ pub(super) fn normalize_and_shift_limbs(limbs: &mut [u64]) -> usize {
 }
 
 /// It's assumed that lhs.len() == rhs.len()
-pub(super) fn add_limbs(lhs: &[u64], rhs: &[u64], mut carry: bool) -> (Vec<u64>, bool) {
-    let mut result = vec![0u64; lhs.len()];
+#[inline]
+pub(super) fn add_limbs<const N: usize>(
+    lhs: &[u64],
+    rhs: &[u64],
+    mut carry: bool,
+) -> ([u64; N], bool) {
+    let mut result = [0u64; N];
 
     for (res, l, r) in izip!(&mut result, lhs, rhs) {
         (*res, carry) = l.carrying_add(*r, carry);
@@ -82,20 +90,29 @@ pub(super) fn add_limbs(lhs: &[u64], rhs: &[u64], mut carry: bool) -> (Vec<u64>,
 }
 
 /// Multiply n limbs by single limb, returns n+1 limbs (no normalization)
-pub(super) fn mul_limbs_by_single(limbs: &[u64], scalar: u64) -> Vec<u64> {
-    let mut result = vec![0u64; limbs.len() + 1];
+#[inline]
+pub(super) fn mul_limbs_by_single<const N: usize>(limbs: &[u64], scalar: u64) -> [u64; N + 1]
+where
+    [(); N + 1]:,
+{
+    let mut result = [0u64; N + 1];
     let mut carry: u64 = 0;
 
     for (i, &limb) in limbs.iter().enumerate() {
         (result[i], carry) = scalar.carrying_mul(limb, carry);
     }
-    result[limbs.len()] = carry;
+    result[N] = carry;
     result
 }
 
 /// It's assumed that lhs.len() == rhs.len()
-pub(super) fn sub_limbs(lhs: &[u64], rhs: &[u64], mut borrow: bool) -> (Vec<u64>, bool) {
-    let mut result = vec![0u64; lhs.len()];
+#[inline]
+pub(super) fn sub_limbs<const N: usize>(
+    lhs: &[u64],
+    rhs: &[u64],
+    mut borrow: bool,
+) -> ([u64; N], bool) {
+    let mut result = [0u64; N];
 
     for (res, l, r) in izip!(&mut result, lhs, rhs) {
         (*res, borrow) = l.borrowing_sub(*r, borrow);
@@ -105,9 +122,13 @@ pub(super) fn sub_limbs(lhs: &[u64], rhs: &[u64], mut borrow: bool) -> (Vec<u64>
 }
 
 /// It's assumed that lhs.len() == rhs.len()
-pub(super) fn mul_limbs(lhs: &[u64], rhs: &[u64]) -> (Vec<u64>, i64) {
+#[inline]
+pub(super) fn mul_limbs<const N: usize>(lhs: &[u64; N], rhs: &[u64; N]) -> ([u64; N], i64)
+where
+    [(); 2 * N]:,
+{
     let n = lhs.len();
-    let mut temp_res = vec![0u64; 2 * n];
+    let mut temp_res = [0u64; 2 * N];
 
     for i in 0..n {
         let mut carry: u64 = 0;
@@ -126,18 +147,21 @@ pub(super) fn mul_limbs(lhs: &[u64], rhs: &[u64]) -> (Vec<u64>, i64) {
         let start_index = msb_index - (n - 1);
         let shift_amount = (n as i64) - (start_index as i64);
 
-        let mut result = temp_res[start_index..(start_index + n)].to_vec();
+        let mut result: [u64; N] = temp_res[start_index..(start_index + n)].try_into().unwrap();
         let overflow = round_mul_result(&mut result, &temp_res, start_index);
 
         let exp_adj = -(shift_amount * 64) + if overflow { 1 } else { 0 };
         (result, exp_adj)
     } else {
         let shift_amount = ((n - 1 - msb_index) * 64) as i64;
+        let mut result = [0u64; N];
+        result[..=msb_index].copy_from_slice(&temp_res[0..=msb_index]);
 
-        (temp_res[0..=msb_index].to_vec(), -shift_amount)
+        (result, -shift_amount)
     }
 }
 
+#[inline]
 fn round_mul_result(result: &mut [u64], full_product: &[u64], start_index: usize) -> bool {
     if start_index == 0 {
         return false;
@@ -171,6 +195,7 @@ fn round_mul_result(result: &mut [u64], full_product: &[u64], start_index: usize
     false
 }
 
+#[inline]
 pub(super) fn get_normalization_leading_zeros_limb(limbs: &mut [u64]) -> usize {
     let first_nonzero_idx = limbs.iter().rposition(|&x| x != 0);
 
@@ -192,8 +217,12 @@ pub(super) fn get_normalization_leading_zeros_limb(limbs: &mut [u64]) -> usize {
     limb_shift_amount + bit_shift
 }
 
-pub(super) fn round_limbs(q: &mut [u64], v: &[u64], r: &[u64]) -> bool {
-    let double_r = mul_limbs_by_single(r, 2);
+#[inline]
+pub(super) fn round_limbs<const N: usize>(q: &mut [u64], v: &[u64], r: &[u64]) -> bool
+where
+    [(); N + 1]:,
+{
+    let double_r = mul_limbs_by_single::<N>(r, 2);
 
     let cmp = compare_limbs(&double_r, v);
 
@@ -224,6 +253,7 @@ pub(super) fn round_limbs(q: &mut [u64], v: &[u64], r: &[u64]) -> bool {
     false
 }
 
+#[inline]
 fn compare_limbs(a: &[u64], b: &[u64]) -> Ordering {
     let max_len = a.len().max(b.len());
 

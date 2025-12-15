@@ -1,18 +1,21 @@
+#![feature(generic_const_exprs)]
+#![allow(incomplete_features)]
+
 use mandelbrot_rust::{Config, Image, bigfloat::BigFloat, text_render::TextRender};
 use minifb::{Key, KeyRepeat, MouseButton, MouseMode, ScaleMode, Window, WindowOptions};
 
-const PRECISION: usize = 256;
-type BF = BigFloat<PRECISION>;
+type BF = BigFloat<2>;
 
 fn main() {
-    let x_center = BF::from("-0.743030");
-    let y_center = BF::from("0.126433");
-    let config = Config::<PRECISION>::new(
-        300,
+    let x_center = BF::parse("-0.743030");
+    let y_center = BF::parse("0.126433");
+    let offset = 0.001;
+    let config = Config::<2>::new(
+        30000,
         BF::from(4.0),
-        (1920, 1080),
-        (&x_center - 1.0, &x_center + 1.0),
-        (&y_center - 1.0, &y_center + 1.0),
+        (800, 800),
+        (x_center - offset, x_center + offset),
+        (y_center - offset, y_center + offset),
     );
 
     // let text_render = TextRender::new();
@@ -33,8 +36,6 @@ fn main() {
         },
     )
     .expect("Unable to create the window");
-
-    // window.set_target_fps(30);
 
     let mut drag_start: Option<(f32, f32)> = None;
     let mut needs_redraw = true;
