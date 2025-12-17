@@ -41,11 +41,7 @@ impl StringNumberParts<'_> {
     }
 }
 
-impl<const LIMBS: usize> Internal<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-    [(); LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Internal<LIMBS> {
     pub fn powi(&self, exponenet: i64) -> Self {
         let one = Self::Value(Number::from(1));
 
@@ -91,11 +87,7 @@ where
     }
 }
 
-impl<const LIMBS: usize> Internal<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-    [(); LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Internal<LIMBS> {
     pub fn parse(text: &str) -> Self {
         let str_number = StringNumberParts::parse(text).expect("Improper number format");
         let mut result = Self::Zero { sign: false };
@@ -220,10 +212,7 @@ impl<const LIMBS: usize> Sub for Internal<LIMBS> {
     }
 }
 
-impl<const LIMBS: usize> Mul for Internal<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Mul for Internal<LIMBS> {
     type Output = Self;
 
     #[inline]
@@ -292,11 +281,7 @@ where
     }
 }
 
-impl<const LIMBS: usize> Div for Internal<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-    [(); LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Div for Internal<LIMBS> {
     type Output = Self;
 
     #[inline]

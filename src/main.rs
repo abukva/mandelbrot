@@ -1,6 +1,3 @@
-#![feature(generic_const_exprs)]
-#![allow(incomplete_features)]
-
 use mandelbrot_rust::{Config, Image, bigfloat::BigFloat, text_render::TextRender};
 use minifb::{Key, KeyRepeat, MouseButton, MouseMode, ScaleMode, Window, WindowOptions};
 
