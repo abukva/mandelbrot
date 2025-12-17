@@ -56,10 +56,6 @@ impl<const LIMBS: usize> Number<LIMBS> {
         }
     }
 
-    fn get_num_limbs(&self) -> usize {
-        self.limbs.len()
-    }
-
     pub(super) fn is_zero(&self) -> bool {
         self.limbs.iter().all(|&x| x == 0)
     }
@@ -142,7 +138,7 @@ impl<const LIMBS: usize> Number<LIMBS> {
         if carry {
             result.change_exponent(1);
             if let ExponentState::Normal(_) = result.exponent {
-                let idx_last = result.get_num_limbs() - 1;
+                let idx_last = LIMBS - 1;
                 result.limbs[idx_last] |= 1u64 << 63;
             }
         }
@@ -179,10 +175,7 @@ impl<const LIMBS: usize> Number<LIMBS> {
     }
 
     #[inline]
-    pub(super) fn mul_magnitudes(self, other: Self) -> Self
-    where
-        [(); 2 * LIMBS]:,
-    {
+    pub(super) fn mul_magnitudes(self, other: Self) -> Self {
         let result_sign = self.get_sign() != other.get_sign();
         let (limbs, shift_amount) = mul_limbs::<LIMBS>(&self.limbs, &other.limbs);
 
@@ -199,17 +192,14 @@ impl<const LIMBS: usize> Number<LIMBS> {
     }
 
     #[inline]
-    fn algorithm_q(u: &[u64], v: &[u64]) -> u64 {
+    fn algorithm_q(u: &[u64; LIMBS], u_carry: u64, v: &[u64; LIMBS]) -> u64 {
         let b: u128 = 1 << 64;
 
-        let n_u = u.len();
-        let n_v = v.len();
-
-        let u_top = u[n_u - 1] as u128;
-        let u_mid = u[n_u - 2] as u128;
-        let u_low = u[n_u - 3] as u128;
-        let v_top = v[n_v - 1] as u128;
-        let v_mid = v[n_v - 2] as u128;
+        let u_top = u_carry as u128;
+        let u_mid = u[LIMBS - 1] as u128;
+        let u_low = u[LIMBS - 2] as u128;
+        let v_top = v[LIMBS - 1] as u128;
+        let v_mid = v[LIMBS - 2] as u128;
 
         let mut q = (u_top * b + u_mid) / v_top;
         let mut r = (u_top * b + u_mid) % v_top;
@@ -228,51 +218,79 @@ impl<const LIMBS: usize> Number<LIMBS> {
     }
 
     #[inline]
-    fn knuth_div_rem(self, other: Self) -> DivResult<LIMBS>
-    where
-        [(); 2 * LIMBS + 1]:,
-        [(); LIMBS + 1]:,
-    {
-        let mut u = [0; 2 * LIMBS + 1];
-        u[LIMBS..2 * LIMBS].copy_from_slice(&self.limbs);
+    fn knuth_div_rem(self, other: Self) -> DivResult<LIMBS> {
+        let mut u_low = [0u64; LIMBS];
+        let mut u_high = self.limbs;
+        let mut u_carry: u64 = 0;
 
-        let mut v_extended = [0u64; LIMBS + 1];
-        v_extended[..LIMBS].copy_from_slice(&other.limbs);
-        let mut q = [0; LIMBS + 1];
+        let v = other.limbs;
+
+        let mut q_low = [0u64; LIMBS];
+        let mut q_high: u64 = 0;
 
         for k in (0..=LIMBS).rev() {
-            let mut q_k = Self::algorithm_q(&u[k..k + LIMBS + 1], &other.limbs);
+            let (u_slice, u_slice_carry) = Self::get_u_slice(&u_low, &u_high, u_carry, k);
+            let mut q_k = Self::algorithm_q(&u_slice, u_slice_carry, &v);
 
-            // Use LIMBS + 1 sized operations
-            let q_k_times_v = mul_limbs_by_single::<LIMBS>(&other.limbs, q_k);
+            let (q_k_times_v, q_k_times_v_carry) = mul_limbs_by_single::<LIMBS>(&v, q_k);
 
-            let u_slice: [u64; LIMBS + 1] = u[k..k + LIMBS + 1].try_into().unwrap();
-            let (diff, borrow) = sub_limbs::<{ LIMBS + 1 }>(&u_slice, &q_k_times_v, false);
+            let (diff, diff_carry, borrow) =
+                sub_limbs_with_carry(&u_slice, u_slice_carry, &q_k_times_v, q_k_times_v_carry);
 
-            u[k..k + LIMBS + 1].copy_from_slice(&diff);
+            Self::set_u_slice(&mut u_low, &mut u_high, &mut u_carry, k, &diff, diff_carry);
 
             if borrow {
                 q_k -= 1;
-                let u_slice: [u64; LIMBS + 1] = u[k..k + LIMBS + 1].try_into().unwrap();
-                let (sum, _) = add_limbs::<{ LIMBS + 1 }>(&u_slice, &v_extended, false);
-                u[k..k + LIMBS + 1].copy_from_slice(&sum);
+                let (u_slice, u_slice_carry) = Self::get_u_slice(&u_low, &u_high, u_carry, k);
+
+                let (sum, sum_carry, _) = add_limbs_with_carry(&u_slice, u_slice_carry, &v, 0);
+                Self::set_u_slice(&mut u_low, &mut u_high, &mut u_carry, k, &sum, sum_carry);
             }
-            q[k] = q_k;
+
+            if k < LIMBS {
+                q_low[k] = q_k;
+            } else {
+                q_high = q_k;
+            }
         }
 
-        let mut r: [u64; LIMBS] = u[0..LIMBS].try_into().unwrap();
+        let mut r = u_low;
 
-        let overflow = round_limbs::<LIMBS>(&mut q, &v_extended, &r);
+        let overflow = round_limbs_with_carry(&mut q_low, &mut q_high, &v, &r);
 
-        let q_shift = normalize_and_shift_limbs(&mut q);
-        let overflow_adjustemnt = if overflow { 1i64 } else { 0i64 };
+        let (mut q_result, additional_shift): ([u64; LIMBS], i64) = if q_high != 0 {
+            let mut result = [0u64; LIMBS];
+            result[..LIMBS - 1].copy_from_slice(&q_low[1..]);
+            result[LIMBS - 1] = q_high;
+            (result, 0)
+        } else if q_low[LIMBS - 1] != 0 {
+            (q_low, 64)
+        } else {
+            let mut result = [0u64; LIMBS];
+            let mut shift = 64i64;
+            for i in (0..LIMBS - 1).rev() {
+                if q_low[i] != 0 {
+                    let positions = LIMBS - 1 - i;
+                    for j in (positions..LIMBS).rev() {
+                        result[j] = q_low[j - positions];
+                    }
+                    shift = 64 + (positions as i64) * 64;
+                    break;
+                }
+            }
+            (result, shift)
+        };
+
+        let q_shift = normalize_and_shift_limbs(&mut q_result);
+        let overflow_adjustment = if overflow { 1i64 } else { 0i64 };
 
         let q_exp = ExponentState::sum_exponents(&[
             self.get_exponent(),
             -other.get_exponent(),
             -((LIMBS - 1) as i64 * 64),
             -(q_shift as i64),
-            overflow_adjustemnt,
+            -(additional_shift),
+            overflow_adjustment,
         ]);
 
         let r_shift = normalize_and_shift_limbs(&mut r);
@@ -283,13 +301,67 @@ impl<const LIMBS: usize> Number<LIMBS> {
         ]);
 
         (
-            (
-                q[1..].try_into().unwrap(),
-                q_exp,
-                self.get_sign() != other.get_sign(),
-            ),
+            (q_result, q_exp, self.get_sign() != other.get_sign()),
             (r, r_exp, self.get_sign()),
         )
+    }
+
+    #[inline]
+    fn get_u_slice<const N: usize>(
+        u_low: &[u64; N],
+        u_high: &[u64; N],
+        u_carry: u64,
+        k: usize,
+    ) -> ([u64; N], u64) {
+        let mut result = [0u64; N];
+        for (i, res) in result.iter_mut().enumerate() {
+            let idx = k + i;
+            *res = if idx < N {
+                u_low[idx]
+            } else if idx < 2 * N {
+                u_high[idx - N]
+            } else {
+                u_carry
+            };
+        }
+        let last_idx = k + N;
+        let last = if last_idx < N {
+            u_low[last_idx]
+        } else if last_idx < 2 * N {
+            u_high[last_idx - N]
+        } else {
+            u_carry
+        };
+        (result, last)
+    }
+
+    #[inline]
+    fn set_u_slice(
+        u_low: &mut [u64; LIMBS],
+        u_high: &mut [u64; LIMBS],
+        u_carry: &mut u64,
+        k: usize,
+        slice: &[u64; LIMBS],
+        slice_carry: u64,
+    ) {
+        for (i, sl) in slice.iter().enumerate() {
+            let idx = k + i;
+            if idx < LIMBS {
+                u_low[idx] = *sl;
+            } else if idx < 2 * LIMBS {
+                u_high[idx - LIMBS] = *sl;
+            } else {
+                *u_carry = *sl;
+            }
+        }
+        let last_idx = k + LIMBS;
+        if last_idx < LIMBS {
+            u_low[last_idx] = slice_carry;
+        } else if last_idx < 2 * LIMBS {
+            u_high[last_idx - LIMBS] = slice_carry;
+        } else {
+            *u_carry = slice_carry;
+        }
     }
 
     // For my normalized representation of numbers this is actual floating-point division
@@ -339,12 +411,8 @@ impl<const LIMBS: usize> Number<LIMBS> {
     }
 
     #[inline]
-    pub(super) fn div_magnitudes(self, other: Self) -> Self
-    where
-        [(); 2 * LIMBS + 1]:,
-        [(); LIMBS + 1]:,
-    {
-        match self.get_num_limbs() {
+    pub(super) fn div_magnitudes(self, other: Self) -> Self {
+        match LIMBS {
             1 => {
                 let ((q_m, q_e, q_s), _) = self.single_limb_div_rem(other);
                 Self::from_components(q_m, q_e, q_s)

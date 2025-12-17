@@ -23,10 +23,7 @@ impl<const LIMBS: usize> BigComplex<LIMBS> {
     }
 
     #[inline]
-    pub fn norm_sq(&self) -> BigFloat<LIMBS>
-    where
-        [(); 2 * LIMBS + 1]:,
-    {
+    pub fn norm_sq(&self) -> BigFloat<LIMBS> {
         self.im * self.im + self.re * self.re
     }
 }
@@ -73,10 +70,7 @@ impl<const LIMBS: usize> Sub<u64> for BigComplex<LIMBS> {
 
 // Mul
 // F64
-impl<const LIMBS: usize> Mul<f64> for BigComplex<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Mul<f64> for BigComplex<LIMBS> {
     type Output = Self;
 
     fn mul(self, other: f64) -> Self {
@@ -85,10 +79,7 @@ where
 }
 
 // U64
-impl<const LIMBS: usize> Mul<u64> for BigComplex<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Mul<u64> for BigComplex<LIMBS> {
     type Output = Self;
 
     fn mul(self, other: u64) -> Self {
@@ -98,11 +89,7 @@ where
 
 // Div
 // F64
-impl<const LIMBS: usize> Div<f64> for BigComplex<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-    [(); LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Div<f64> for BigComplex<LIMBS> {
     type Output = Self;
 
     fn div(self, other: f64) -> Self {
@@ -152,10 +139,7 @@ impl<const LIMBS: usize> Sub for BigComplex<LIMBS> {
 
 // Multiplication
 
-impl<const LIMBS: usize> Mul for BigComplex<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Mul for BigComplex<LIMBS> {
     type Output = Self;
 
     #[inline]
@@ -169,11 +153,7 @@ where
 
 // Division
 
-impl<const LIMBS: usize> Div for BigComplex<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-    [(); LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Div for BigComplex<LIMBS> {
     type Output = Self;
 
     #[inline]

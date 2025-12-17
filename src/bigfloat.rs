@@ -33,13 +33,7 @@ impl<const LIMBS: usize> BigFloat<LIMBS> {
     pub fn is_nan(&self) -> bool {
         matches!(self.0, Internal::NaN)
     }
-}
 
-impl<const LIMBS: usize> BigFloat<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-    [(); LIMBS + 1]:,
-{
     pub fn parse(text: &str) -> Self {
         Self(Internal::parse(text))
     }
@@ -91,10 +85,7 @@ impl<const LIMBS: usize> Sub<u64> for BigFloat<LIMBS> {
 
 // Mul
 // F64
-impl<const LIMBS: usize> Mul<f64> for BigFloat<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Mul<f64> for BigFloat<LIMBS> {
     type Output = Self;
 
     fn mul(self, other: f64) -> Self {
@@ -103,10 +94,7 @@ where
 }
 
 // U64
-impl<const LIMBS: usize> Mul<u64> for BigFloat<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Mul<u64> for BigFloat<LIMBS> {
     type Output = Self;
 
     fn mul(self, other: u64) -> Self {
@@ -116,11 +104,7 @@ where
 
 // Div
 // F64
-impl<const LIMBS: usize> Div<f64> for BigFloat<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-    [(); LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Div<f64> for BigFloat<LIMBS> {
     type Output = Self;
 
     fn div(self, other: f64) -> Self {
@@ -129,11 +113,7 @@ where
 }
 
 // U64
-impl<const LIMBS: usize> Div<u64> for BigFloat<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-    [(); LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Div<u64> for BigFloat<LIMBS> {
     type Output = Self;
 
     fn div(self, other: u64) -> Self {
@@ -159,10 +139,7 @@ impl<const LIMBS: usize> Sub for BigFloat<LIMBS> {
     }
 }
 
-impl<const LIMBS: usize> Mul for BigFloat<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Mul for BigFloat<LIMBS> {
     type Output = Self;
 
     #[inline]
@@ -171,11 +148,7 @@ where
     }
 }
 
-impl<const LIMBS: usize> Div for BigFloat<LIMBS>
-where
-    [(); 2 * LIMBS + 1]:,
-    [(); LIMBS + 1]:,
-{
+impl<const LIMBS: usize> Div for BigFloat<LIMBS> {
     type Output = Self;
 
     #[inline]

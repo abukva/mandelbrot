@@ -91,18 +91,14 @@ pub(super) fn add_limbs<const N: usize>(
 
 /// Multiply n limbs by single limb, returns n+1 limbs (no normalization)
 #[inline]
-pub(super) fn mul_limbs_by_single<const N: usize>(limbs: &[u64], scalar: u64) -> [u64; N + 1]
-where
-    [(); N + 1]:,
-{
-    let mut result = [0u64; N + 1];
+pub(super) fn mul_limbs_by_single<const N: usize>(limbs: &[u64], scalar: u64) -> ([u64; N], u64) {
+    let mut result = [0u64; N];
     let mut carry: u64 = 0;
 
     for (i, &limb) in limbs.iter().enumerate() {
         (result[i], carry) = scalar.carrying_mul(limb, carry);
     }
-    result[N] = carry;
-    result
+    (result, carry)
 }
 
 /// It's assumed that lhs.len() == rhs.len()
@@ -121,57 +117,119 @@ pub(super) fn sub_limbs<const N: usize>(
     (result, borrow)
 }
 
+#[inline]
+pub(super) fn sub_limbs_with_carry<const N: usize>(
+    a: &[u64; N],
+    a_carry: u64,
+    b: &[u64; N],
+    b_carry: u64,
+) -> ([u64; N], u64, bool) {
+    let mut result = [0u64; N];
+    let mut borrow = false;
+
+    for i in 0..N {
+        (result[i], borrow) = a[i].borrowing_sub(b[i], borrow);
+    }
+    let (result_carry, borrow) = a_carry.borrowing_sub(b_carry, borrow);
+
+    (result, result_carry, borrow)
+}
+
+#[inline]
+pub(super) fn add_limbs_with_carry<const N: usize>(
+    a: &[u64; N],
+    a_carry: u64,
+    b: &[u64; N],
+    b_carry: u64,
+) -> ([u64; N], u64, bool) {
+    let mut result = [0u64; N];
+    let mut carry = false;
+
+    for i in 0..N {
+        (result[i], carry) = a[i].carrying_add(b[i], carry);
+    }
+    let (result_carry, carry) = a_carry.carrying_add(b_carry, carry);
+
+    (result, result_carry, carry)
+}
+
 /// It's assumed that lhs.len() == rhs.len()
 #[inline]
-pub(super) fn mul_limbs<const N: usize>(lhs: &[u64; N], rhs: &[u64; N]) -> ([u64; N], i64)
-where
-    [(); 2 * N]:,
-{
-    let n = lhs.len();
-    let mut temp_res = [0u64; 2 * N];
+pub(super) fn mul_limbs<const N: usize>(lhs: &[u64; N], rhs: &[u64; N]) -> ([u64; N], i64) {
+    let mut temp_res_low = [0u64; N];
+    let mut temp_res_high = [0u64; N];
 
-    for i in 0..n {
+    for i in 0..N {
         let mut carry: u64 = 0;
 
         for (j, &rhs_limb) in rhs.iter().enumerate() {
             let k = i + j;
-            (temp_res[k], carry) = lhs[i].carrying_mul_add(rhs_limb, carry, temp_res[k]);
+            let temp_res = if k >= N {
+                &mut temp_res_high[k - N]
+            } else {
+                &mut temp_res_low[k]
+            };
+            (*temp_res, carry) = lhs[i].carrying_mul_add(rhs_limb, carry, *temp_res);
         }
 
-        temp_res[i + n] = carry;
+        temp_res_high[i] = carry;
     }
 
-    let msb_index = temp_res.iter().rposition(|&x| x != 0).unwrap();
+    let msb_index = temp_res_high
+        .iter()
+        .rposition(|&x| x != 0)
+        .map(|i| i + N)
+        .or_else(|| temp_res_low.iter().rposition(|&x| x != 0))
+        .unwrap();
 
-    if msb_index >= n - 1 {
-        let start_index = msb_index - (n - 1);
-        let shift_amount = (n as i64) - (start_index as i64);
+    if msb_index >= N - 1 {
+        let start_index = msb_index - (N - 1);
+        let shift_amount = (N as i64) - (start_index as i64);
 
-        let mut result: [u64; N] = temp_res[start_index..(start_index + n)].try_into().unwrap();
-        let overflow = round_mul_result(&mut result, &temp_res, start_index);
+        let mut result: [u64; N] = if start_index == N {
+            temp_res_high
+        } else {
+            let mut result = [0u64; N];
+            let from_low = N - start_index;
+            result[..from_low].copy_from_slice(&temp_res_low[start_index..]);
+            result[from_low..].copy_from_slice(&temp_res_high[..N - from_low]);
+            result
+        };
+
+        let overflow = round_mul_result(&mut result, &temp_res_low, &temp_res_high, start_index);
 
         let exp_adj = -(shift_amount * 64) + if overflow { 1 } else { 0 };
         (result, exp_adj)
     } else {
-        let shift_amount = ((n - 1 - msb_index) * 64) as i64;
+        let shift_amount = ((N - 1 - msb_index) * 64) as i64;
         let mut result = [0u64; N];
-        result[..=msb_index].copy_from_slice(&temp_res[0..=msb_index]);
+        result[..=msb_index].copy_from_slice(&temp_res_low[0..=msb_index]);
 
         (result, -shift_amount)
     }
 }
 
 #[inline]
-fn round_mul_result(result: &mut [u64], full_product: &[u64], start_index: usize) -> bool {
+fn round_mul_result<const N: usize>(
+    result: &mut [u64; N],
+    low: &[u64; N],
+    high: &[u64; N],
+    start_index: usize,
+) -> bool {
     if start_index == 0 {
         return false;
     }
 
-    let guard_limb = full_product[start_index - 1];
+    let guard_limb = if start_index - 1 < N {
+        low[start_index - 1]
+    } else {
+        high[start_index - 1 - N]
+    };
+
     let guard_bit = (guard_limb >> 63) & 1;
 
-    let sticky = (guard_limb & 0x7FFFFFFFFFFFFFFF) != 0
-        || full_product[..start_index - 1].iter().any(|&x| x != 0);
+    let sticky =
+        (guard_limb & 0x7FFFFFFFFFFFFFFF) != 0 || has_nonzero_before(low, high, start_index - 1);
 
     let round_up = guard_bit == 1 && (sticky || (result[0] & 1) == 1);
 
@@ -187,12 +245,21 @@ fn round_mul_result(result: &mut [u64], full_product: &[u64], start_index: usize
         }
 
         if carry {
-            result[result.len() - 1] = 1u64 << 63;
+            result[N - 1] = 1u64 << 63;
             return true;
         }
     }
 
     false
+}
+
+#[inline]
+fn has_nonzero_before<const N: usize>(low: &[u64; N], high: &[u64; N], index: usize) -> bool {
+    if index <= N {
+        low[..index].iter().any(|&x| x != 0)
+    } else {
+        low.iter().any(|&x| x != 0) || high[..index - N].iter().any(|&x| x != 0)
+    }
 }
 
 #[inline]
@@ -218,23 +285,31 @@ pub(super) fn get_normalization_leading_zeros_limb(limbs: &mut [u64]) -> usize {
 }
 
 #[inline]
-pub(super) fn round_limbs<const N: usize>(q: &mut [u64], v: &[u64], r: &[u64]) -> bool
-where
-    [(); N + 1]:,
-{
-    let double_r = mul_limbs_by_single::<N>(r, 2);
+pub(super) fn round_limbs_with_carry<const N: usize>(
+    q_low: &mut [u64; N],
+    q_high: &mut u64,
+    v: &[u64; N],
+    r: &[u64; N],
+) -> bool {
+    let (double_r, double_r_carry) = mul_limbs_by_single::<N>(r, 2);
 
-    let cmp = compare_limbs(&double_r, v);
+    let cmp = if double_r_carry != 0 {
+        Ordering::Greater
+    } else {
+        compare_limbs(&double_r, v)
+    };
+
+    let lsb = if N >= 2 { q_low[1] } else { *q_high };
 
     let round_up = match cmp {
         Ordering::Less => false,
         Ordering::Greater => true,
-        Ordering::Equal => (q[1] & 1) == 1,
+        Ordering::Equal => (lsb & 1) == 1,
     };
 
     if round_up {
         let mut carry = true;
-        for q_i in q[1..].iter_mut() {
+        for q_i in q_low[1..].iter_mut() {
             let (res, c) = q_i.overflowing_add(if carry { 1 } else { 0 });
             *q_i = res;
             carry = c;
@@ -242,10 +317,14 @@ where
                 break;
             }
         }
+        if carry {
+            let (res, c) = q_high.overflowing_add(1);
+            *q_high = res;
+            carry = c;
+        }
 
         if carry {
-            let top_idx = q.len() - 1;
-            q[top_idx] = 1u64 << 63;
+            *q_high = 1u64 << 63;
             return true;
         }
     }

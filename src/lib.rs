@@ -1,6 +1,3 @@
-#![feature(generic_const_exprs)]
-#![feature(bigint_helper_methods)]
-
 use rayon::prelude::*;
 
 pub mod bigcomplex;
@@ -42,11 +39,7 @@ impl<const LIMBS: usize> Config<LIMBS> {
         }
     }
 
-    fn get_resolution(&self) -> BigFloatPair<LIMBS>
-    where
-        [(); 2 * LIMBS + 1]:,
-        [(); LIMBS + 1]:,
-    {
+    fn get_resolution(&self) -> BigFloatPair<LIMBS> {
         let (x_min, x_max) = self.x_lims;
         let (y_min, y_max) = self.y_lims;
         let (width, height) = self.window_size;
@@ -64,21 +57,13 @@ struct Pixel<const LIMBS: usize> {
 }
 
 impl<const LIMBS: usize> Pixel<LIMBS> {
-    fn new(config: &Config<LIMBS>, coords: (usize, usize)) -> Pixel<LIMBS>
-    where
-        [(); 2 * LIMBS + 1]:,
-        [(); LIMBS + 1]:,
-    {
+    fn new(config: &Config<LIMBS>, coords: (usize, usize)) -> Pixel<LIMBS> {
         let number = Self::get_complex_number(coords, config);
 
         Pixel { number }
     }
 
-    fn get_complex_number(coords: (usize, usize), config: &Config<LIMBS>) -> BigComplex<LIMBS>
-    where
-        [(); 2 * LIMBS + 1]:,
-        [(); LIMBS + 1]:,
-    {
+    fn get_complex_number(coords: (usize, usize), config: &Config<LIMBS>) -> BigComplex<LIMBS> {
         let (x_idx, y_idx) = coords;
         let (x_min, _) = config.x_lims;
         let (y_min, _) = config.y_lims;
@@ -107,18 +92,12 @@ impl<const LIMBS: usize> Pixel<LIMBS> {
         ((color.r as u32) << 16) | ((color.g as u32) << 8) | (color.b as u32)
     }
 
-    fn get_color(&self, config: &Config<LIMBS>) -> u32
-    where
-        [(); 2 * LIMBS + 1]:,
-    {
+    fn get_color(&self, config: &Config<LIMBS>) -> u32 {
         let max_iter = self.get_iter(config);
         Self::iter_to_color(max_iter, config)
     }
 
-    fn get_iter(&self, config: &Config<LIMBS>) -> f64
-    where
-        [(); 2 * LIMBS + 1]:,
-    {
+    fn get_iter(&self, config: &Config<LIMBS>) -> f64 {
         let c = self.number;
         let mut smoothed_iter = config.max_iter as f64;
 
@@ -152,11 +131,7 @@ pub struct Image<const LIMBS: usize> {
 }
 
 impl<const LIMBS: usize> Image<LIMBS> {
-    pub fn new(config: Config<LIMBS>) -> Image<LIMBS>
-    where
-        [(); 2 * LIMBS + 1]:,
-        [(); LIMBS + 1]:,
-    {
+    pub fn new(config: Config<LIMBS>) -> Image<LIMBS> {
         let (width, height) = config.window_size;
         let mut data: Vec<Pixel<LIMBS>> = Vec::new();
 
@@ -172,11 +147,7 @@ impl<const LIMBS: usize> Image<LIMBS> {
         }
     }
 
-    pub fn render(&mut self) -> Box<[u32]>
-    where
-        [(); 2 * LIMBS + 1]:,
-        [(); LIMBS + 1]:,
-    {
+    pub fn render(&mut self) -> Box<[u32]> {
         self.update_pixels();
 
         let render: Vec<u32> = self
@@ -187,11 +158,7 @@ impl<const LIMBS: usize> Image<LIMBS> {
         render.into_boxed_slice()
     }
 
-    fn update_pixels(&mut self)
-    where
-        [(); 2 * LIMBS + 1]:,
-        [(); LIMBS + 1]:,
-    {
+    fn update_pixels(&mut self) {
         let (width, height) = self.config.window_size;
         let mut data: Vec<Pixel<LIMBS>> = Vec::new();
 
@@ -203,11 +170,7 @@ impl<const LIMBS: usize> Image<LIMBS> {
         self.pixels = data.into_boxed_slice();
     }
 
-    pub fn move_window(&mut self, mouse_move: (f32, f32))
-    where
-        [(); 2 * LIMBS + 1]:,
-        [(); LIMBS + 1]:,
-    {
+    pub fn move_window(&mut self, mouse_move: (f32, f32)) {
         let (dx, dy) = mouse_move;
         let dx = dx as f64;
         let dy = dy as f64;
@@ -224,11 +187,7 @@ impl<const LIMBS: usize> Image<LIMBS> {
         self.config.y_lims = (y_min - y_window_move, y_max - y_window_move);
     }
 
-    pub fn zoom_window(&mut self, zoom: f32)
-    where
-        [(); 2 * LIMBS + 1]:,
-        [(); LIMBS + 1]:,
-    {
+    pub fn zoom_window(&mut self, zoom: f32) {
         let zoom_factor = if zoom > 0.0 { 0.7 } else { 1.3 };
 
         let (x_min, x_max) = self.config.x_lims;
@@ -253,11 +212,7 @@ impl<const LIMBS: usize> Image<LIMBS> {
         self.config.max_iter = new_max_iter as usize;
     }
 
-    pub fn get_image_info(&self) -> (BigFloat<LIMBS>, BigFloat<LIMBS>, BigFloat<LIMBS>, usize)
-    where
-        [(); 2 * LIMBS + 1]:,
-        [(); LIMBS + 1]:,
-    {
+    pub fn get_image_info(&self) -> (BigFloat<LIMBS>, BigFloat<LIMBS>, BigFloat<LIMBS>, usize) {
         let (x_min, x_max) = self.config.x_lims;
         let (y_min, y_max) = self.config.y_lims;
 
